@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Bash(*)",
+      "Bash(.venv/bin/python *)",
+      "Bash(.venv/bin/pip *)",
+      "Bash(python3 *)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(curl *)",
+      "Bash(ls *)",
+      "Bash(kill *)",
+      "Bash(pkill *)",
+      "Bash(sleep *)",
+      "Bash(cd *)",
+      "Bash(make *)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip list *)",
+      "Bash(.venv/bin/python -m pytest -q)",
+      "Bash(.venv/bin/python -m ruff check src tests)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
+}

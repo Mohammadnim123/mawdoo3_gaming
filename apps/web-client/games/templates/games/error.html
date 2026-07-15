@@ -1,0 +1,15 @@
+{% extends "games/base.html" %}
+
+{% block back %}
+  <a class="btn" href="{% url 'games:home' %}?lang={{ lang }}">‹ {{ t.back }}</a>
+{% endblock %}
+
+{% block content %}
+  <section class="status-panel">
+    <h2 class="status-title">⚠ {{ error_title }}</h2>
+    <p class="status-error" dir="auto">{{ error_message }}</p>
+    <div class="status-actions">
+      <a class="btn" href="{% url 'games:home' %}?lang={{ lang }}">{{ t.back_home }}</a>
+    </div>
+  </section>
+{% endblock %}

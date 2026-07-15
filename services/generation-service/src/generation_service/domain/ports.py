@@ -1,0 +1,77 @@
+"""Ports (hexagonal boundaries).
+
+Application/use-case code depends only on these Protocols; infrastructure
+provides the adapters. Swapping local-folder storage for S3, or SQLite for
+Postgres, is a container change — never a domain change.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from generation_service.domain.entities import (
+    Game,
+    GameSummary,
+    GateReport,
+    GenerationJob,
+    JobStatus,
+    LlmUsage,
+    PipelineStage,
+)
+
+
+class StoragePort(Protocol):
+    """Object storage for game bundles. Keys mirror the future bucket layout
+    (games/{game_id}/index.html) so local dev and cloud prod are identical."""
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+    async def get(self, key: str) -> bytes: ...
+
+    async def delete(self, key: str) -> None: ...
+
+
+class GameRepository(Protocol):
+    async def add(self, game: Game) -> None: ...
+
+    async def update(self, game: Game) -> None: ...
+
+    async def get(self, game_id: str) -> Game | None: ...
+
+    async def list_games(self, limit: int, offset: int) -> list[GameSummary]: ...
+
+    async def count(self) -> int: ...
+
+
+class JobRepository(Protocol):
+    async def add(self, job: GenerationJob) -> None: ...
+
+    async def get(self, job_id: str) -> GenerationJob | None: ...
+
+    async def set_status(self, job_id: str, status: JobStatus) -> None: ...
+
+    async def set_stage(self, job_id: str, stage: PipelineStage) -> None: ...
+
+    async def mark_succeeded(
+        self, job_id: str, game_id: str, gate_report: GateReport | None
+    ) -> None: ...
+
+    async def mark_failed(
+        self,
+        job_id: str,
+        error_code: str,
+        error_message: str,
+        gate_report: GateReport | None = None,
+    ) -> None: ...
+
+    async def has_active_job_for_game(self, game_id: str) -> bool: ...
+
+    async def fail_abandoned(self, error_code: str, error_message: str) -> int: ...
+
+
+class LlmCallLog(Protocol):
+    """Flat per-call log — the cost-tracking substrate (every LLM call, always)."""
+
+    async def record(self, job_id: str | None, usage: LlmUsage) -> None: ...
+
+    async def usage_for_job(self, job_id: str) -> list[LlmUsage]: ...

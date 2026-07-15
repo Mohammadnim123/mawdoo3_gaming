@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "web-client"
+version = "0.1.0"
+description = "Django web client for the Prompt-to-Game MVP: UI only — all generation logic lives in the generation-service REST API."
+requires-python = ">=3.11"
+dependencies = [
+    "django>=5.0",
+    "requests>=2.32",
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["webclient", "games"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["webclient", "games"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

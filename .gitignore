@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Django web client
+apps/web-client/staticfiles/
+
+# Retired code kept for reference (not part of the build)
+.archive/
+
+# Environment — never commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Generated artifacts (regenerable from the pipeline; reproducibility lives in the DB)
+services/generation-service/var/
+
+# OS / editor noise
+.DS_Store
+*.swp

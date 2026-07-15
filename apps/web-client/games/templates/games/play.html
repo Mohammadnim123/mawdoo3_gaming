@@ -1,0 +1,36 @@
+{% extends "games/base.html" %}
+{% load static %}
+
+{% block title %}{% if lang == 'ar' %}{{ game.title.ar }}{% else %}{{ game.title.en }}{% endif %} — {{ t.app_title }}{% endblock %}
+
+{% block back %}
+  <a class="btn" href="{% url 'games:home' %}?lang={{ lang }}">‹ {{ t.back }}</a>
+{% endblock %}
+
+{% block content %}
+  <div class="frame-wrap">
+    <iframe id="game-frame" class="game-frame"
+            sandbox="allow-scripts" referrerpolicy="no-referrer" allow=""
+            src="{{ game_src }}" data-game-id="{{ game.id }}"
+            data-game-origin="{{ game_origin }}"
+            title="{% if lang == 'ar' %}{{ game.title.ar }}{% else %}{{ game.title.en }}{% endif %}"></iframe>
+  </div>
+  <div id="event-log" class="event-log"></div>
+
+  <section class="chat-panel">
+    <h2 class="chat-title">💬 {{ t.edit_title }}</h2>
+    <form class="chat-form" method="post" action="{% url 'games:edit' game.id %}">
+      {% csrf_token %}
+      <input type="hidden" name="lang" value="{{ lang }}">
+      <input class="gen-input" type="text" name="instruction" dir="auto" required
+             minlength="2" maxlength="500" placeholder="{{ t.edit_placeholder }}">
+      <button class="btn btn-primary" type="submit">{{ t.send }}</button>
+    </form>
+    {% if edit_error %}<p class="gen-status">⚠ {{ t.gen_failed }} — {{ edit_error }}</p>{% endif %}
+    <p class="chat-hint" dir="auto">{{ t.original_prompt }}: {{ game.prompt }}</p>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'games/play.js' %}" defer></script>
+{% endblock %}

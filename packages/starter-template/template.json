@@ -1,0 +1,12 @@
+{
+  "name": "mawdoo3-starter-template",
+  "version": "1.1.0",
+  "contract": "createGame-v1",
+  "description": "Versioned bilingual (ar/en, RTL-first) infrastructure template every generated game inherits. Provides runtime, lifecycle, localization, the game SDK, and an optional vendored Three.js runtime for lightweight 3D games. Gameplay is never part of the template.",
+  "three_version": "0.149.0",
+  "files": {
+    "page": "index.html.tpl",
+    "runtime": ["runtime/engine.js", "runtime/engine.css"],
+    "optional_runtime": ["runtime/three.min.js"]
+  }
+}
