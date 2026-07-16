@@ -1,0 +1,52 @@
+{% load game_extras %}
+<aside class="flex flex-col gap-4" aria-label="Discovery">
+  {% if trending %}
+  <section class="rounded-2xl border border-edge bg-surface-1 p-4">
+    <h2 class="mb-3 text-sm font-semibold text-ink">{{ t.feed_trending_now }}</h2>
+    <ol class="flex flex-col gap-2.5">
+      {% for g in trending %}
+        <li>
+          <a href="/g/{{ g.slug }}" class="group flex items-center gap-3">
+            <span class="w-4 text-center text-sm font-bold text-ink-muted">{{ forloop.counter }}</span>
+            {% if g.cover_url %}
+              <img src="{{ g.cover_url }}" alt="" loading="lazy" class="h-9 w-14 shrink-0 rounded-lg border border-edge object-cover">
+            {% else %}
+              <span class="grid h-9 w-14 shrink-0 place-items-center rounded-lg border border-edge bg-surface-2 text-ink-muted">🎮</span>
+            {% endif %}
+            <span class="min-w-0">
+              <span class="block truncate text-sm font-medium text-ink group-hover:underline">{{ g|loc_title:locale }}</span>
+              <span class="block truncate text-xs text-ink-muted">▲ {{ g.play_count }} plays</span>
+            </span>
+          </a>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if suggested %}
+  <section class="rounded-2xl border border-edge bg-surface-1 p-4">
+    <h2 class="mb-3 text-sm font-semibold text-ink">{{ t.feed_who_to_follow }}</h2>
+    <ul class="flex flex-col gap-3">
+      {% for c in suggested %}
+        <li class="flex items-center gap-3">
+          <a href="/u/{{ c.handle }}" class="shrink-0">
+            <span class="grid h-8 w-8 place-items-center rounded-full text-xs font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{{ c.display_name|first|upper }}</span>
+          </a>
+          <a href="/u/{{ c.handle }}" class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium text-ink hover:underline">{{ c.display_name }}</span>
+            <span class="block truncate text-xs text-ink-muted">{{ c.follower_count }} followers</span>
+          </a>
+          {% if user.is_authenticated %}
+            <form method="post" action="/users/{{ c.handle }}/follow">{% csrf_token %}
+              <button class="rounded-full border border-edge px-3 py-1 text-xs font-medium text-ink-secondary hover:text-ink" type="submit">{{ t.follow }}</button>
+            </form>
+          {% else %}
+            <a href="/login" class="rounded-full border border-edge px-3 py-1 text-xs font-medium text-ink-secondary hover:text-ink">{{ t.follow }}</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</aside>

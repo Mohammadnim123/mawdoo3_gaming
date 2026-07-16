@@ -66,23 +66,53 @@ def _draft_slug() -> str:
 # ---------------------------------------------------------------------------
 # Landing + feed
 # ---------------------------------------------------------------------------
+GENRES = ["runner", "platformer", "puzzle", "shooter", "arcade", "snake", "breakout", "flappy"]
+
+
 @require_GET
 def home(request):
-    sort = request.GET.get("sort", "new")
-    qs = Game.objects.filter(
+    from django.contrib.auth import get_user_model
+
+    sort = request.GET.get("sort", "for_you")
+    genre = (request.GET.get("genre") or "").strip() or None
+    base = Game.objects.filter(
         status=GameStatus.LIVE, visibility=Visibility.PUBLIC
     ).select_related("owner")
+    if genre:
+        base = base.filter(genre=genre)
+
     if sort == "following" and request.user.is_authenticated:
         following_ids = list(request.user.following_set.values_list("following_id", flat=True))
-        qs = qs.filter(owner_id__in=following_ids).order_by("-published_at", "-created_at")
+        qs = base.filter(owner_id__in=following_ids).order_by("-published_at", "-created_at")
     elif sort == "trending":
-        qs = qs.order_by("-play_count", "-like_count", "-published_at")
+        qs = base.order_by("-play_count", "-like_count", "-published_at")
+    elif sort == "new":
+        qs = base.order_by("-published_at", "-created_at")
     else:
-        sort = "new"
-        qs = qs.order_by("-published_at", "-created_at")
+        sort = "for_you"
+        qs = base.order_by("-published_at", "-created_at")
+
+    # Right rail: trending now + suggested creators.
+    trending = list(
+        Game.objects.filter(status=GameStatus.LIVE, visibility=Visibility.PUBLIC)
+        .order_by("-play_count", "-like_count")[:5]
+    )
+    User = get_user_model()
+    creators = User.objects.filter(
+        games__status=GameStatus.LIVE, games__visibility=Visibility.PUBLIC,
+        banned_at__isnull=True,
+    ).distinct().order_by("-follower_count")
+    if request.user.is_authenticated:
+        creators = creators.exclude(id=request.user.id)
+    suggested = list(creators[:4])
+
     return render(request, "pages/home.html", {
         "games": list(qs[: settings.GAMES_PAGE_SIZE]),
         "sort": sort,
+        "genre": genre,
+        "genres": GENRES,
+        "trending": trending,
+        "suggested": suggested,
     })
 
 

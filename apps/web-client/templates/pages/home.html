@@ -1,45 +1,81 @@
 {% extends "base.html" %}
+{% load static %}
 {% block main_class %}w-full{% endblock %}
 {% block content %}
+{# ── Hero ─────────────────────────────────────────────────────────────── #}
 <section class="relative overflow-hidden border-b border-edge-subtle">
-  <div class="pointer-events-none absolute inset-0 opacity-60"
-       style="background:radial-gradient(60% 60% at 50% 0%, color-mix(in srgb, var(--color-violet) 18%, transparent), transparent 70%)"></div>
-  <div class="relative mx-auto w-full max-w-3xl px-4 py-14 text-center md:py-20">
-    <span class="fp-chip mx-auto mb-5">✨ {{ t.hero_pill }}</span>
-    <h1 class="fp-title-hero fp-wordmark mb-4">
-      <span class="fp-gradient-text">{{ t.hero_title }}</span>
+  <div class="fp-hero-grid" aria-hidden="true"></div>
+  <div class="relative mx-auto flex w-full max-w-4xl flex-col items-center gap-4 px-4 pb-8 pt-8 text-center sm:gap-5 sm:pb-10 sm:pt-12">
+    <p class="flex items-center gap-2 rounded-full border border-edge bg-surface-1 px-4 py-1.5 text-xs font-medium text-ink-secondary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-violet)" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
+      {{ t.hero_pill }}
+    </p>
+    <h1 class="fp-title-hero fp-wordmark font-bold">
+      <span class="relative inline-block">
+        <span>{{ t.hero_title_lead }}</span><span class="fp-headline-gradient">{{ t.hero_title_highlight }}</span>
+        <span class="fp-shine-overlay absolute inset-0" aria-hidden="true">{{ t.hero_title_lead }}{{ t.hero_title_highlight }}</span>
+      </span>
     </h1>
-    <p class="mx-auto mb-8 max-w-xl text-ink-secondary">{{ t.hero_subtitle }}</p>
+    <p class="max-w-xl text-base text-ink-secondary">{{ t.hero_subtitle }}</p>
 
-    <form action="/create" method="get" class="mx-auto max-w-2xl">
-      <div class="fp-card p-2">
-        <textarea name="idea" rows="2" maxlength="1000" required
-                  class="fp-input border-0 bg-transparent text-base focus:ring-0"
+    <form action="/create" method="get" class="w-full max-w-2xl text-start">
+      <div class="rounded-3xl border border-edge bg-surface-1/70 p-4 backdrop-blur-xl transition-colors duration-200 focus-within:border-violet sm:p-5">
+        <textarea name="idea" rows="3" maxlength="1000" required data-typewriter
+                  aria-label="{{ t.hero_prompt_placeholder }}"
+                  class="min-h-20 w-full resize-none bg-transparent text-base text-ink outline-none placeholder:text-ink-muted sm:text-lg"
                   placeholder="{{ t.hero_prompt_placeholder }}"></textarea>
-        <div class="flex items-center justify-between gap-2 px-2 pb-1">
-          <span class="text-xs text-ink-muted">{{ t.hero_examples }}</span>
-          <button type="submit" class="fp-btn fp-btn-cta">{{ t.hero_cta }} →</button>
+        <div class="flex items-end justify-between gap-3">
+          <span data-charcount class="font-mono text-xs tabular-nums text-ink-muted opacity-0">0/1000</span>
+          <button type="submit" aria-label="{{ t.hero_cta }}"
+                  class="fp-hit flex size-11 shrink-0 items-center justify-center rounded-full text-ink-on-accent transition-opacity hover:opacity-90"
+                  style="background-image:var(--gradient-cta)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
         </div>
       </div>
     </form>
-
-    <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
-      <a class="fp-chip hover:text-ink" href="/create?idea=a+neon+endless+runner+dodging+lasers">Neon runner</a>
-      <a class="fp-chip hover:text-ink" href="/create?idea=a+relaxing+memory+match+card+game">Memory match</a>
-      <a class="fp-chip hover:text-ink" href="/create?idea=a+retro+space+shooter">Space shooter</a>
-      <a class="fp-chip hover:text-ink" href="/create?idea=a+snake+game+with+a+twist">Snake+</a>
-    </div>
   </div>
 </section>
 
-<div class="mx-auto w-full max-w-6xl px-4 py-8">
-  <div class="mb-5 flex items-center gap-2">
-    <a href="/?sort=new" class="fp-chip {% if sort == 'new' %}text-ink{% endif %}">{{ t.feed_new }}</a>
-    <a href="/?sort=trending" class="fp-chip {% if sort == 'trending' %}text-ink{% endif %}">{{ t.feed_trending }}</a>
-    {% if user.is_authenticated %}
-      <a href="/?sort=following" class="fp-chip {% if sort == 'following' %}text-ink{% endif %}">{{ t.feed_following }}</a>
-    {% endif %}
-  </div>
-  {% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+{# ── Feed (3-column: nav rail · posts · discovery rail) ───────────────── #}
+<div class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-4 sm:py-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,600px)_300px] xl:justify-center">
+  <div class="hidden lg:block"><div class="sticky top-20">{% include "feed/_left_rail.html" %}</div></div>
+
+  <main class="flex min-w-0 flex-col gap-4">
+    {# composer card #}
+    <a href="/create" class="flex items-center gap-3 rounded-2xl border border-edge bg-surface-1 p-3 transition-colors hover:border-edge-strong">
+      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{% if user.is_authenticated %}{{ user.display_name|first|upper }}{% else %}?{% endif %}</span>
+      <span class="flex-1 truncate rounded-full bg-surface-2 px-4 py-2.5 text-sm text-ink-muted">{{ t.feed_composer_prompt }}</span>
+      <span class="grid size-9 shrink-0 place-items-center rounded-full text-white" style="background-color:var(--color-violet)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 21 12-12M15 5l4 4M18 3v2M22 7h-2M6 4v2M8 6H6"/></svg>
+      </span>
+    </a>
+
+    {# sort chips (mobile) #}
+    <div class="flex flex-wrap items-center gap-2 lg:hidden">
+      <a href="/?sort=for_you" class="fp-chip {% if sort == 'for_you' %}text-ink border-edge-strong{% endif %}">{{ t.feed_for_you }}</a>
+      <a href="/?sort=trending" class="fp-chip {% if sort == 'trending' %}text-ink border-edge-strong{% endif %}">{{ t.feed_trending }}</a>
+      <a href="/?sort=new" class="fp-chip {% if sort == 'new' %}text-ink border-edge-strong{% endif %}">{{ t.feed_new }}</a>
+      {% if user.is_authenticated %}<a href="/?sort=following" class="fp-chip {% if sort == 'following' %}text-ink border-edge-strong{% endif %}">{{ t.feed_following }}</a>{% endif %}
+    </div>
+
+    {# genre filter chips #}
+    <div class="fp-scroll-x -mx-4 gap-2 px-4 sm:mx-0 sm:flex-wrap sm:overflow-x-visible sm:px-0 sm:[mask-image:none]" role="group" aria-label="{{ t.feed_filter_genre }}">
+      {% for g in genres %}
+        <a href="{% if genre == g %}/?sort={{ sort }}{% else %}/?genre={{ g }}&sort={{ sort }}{% endif %}"
+           class="fp-chip capitalize {% if genre == g %}text-ink border-edge-strong{% endif %}">{{ g }}</a>
+      {% endfor %}
+    </div>
+
+    {# posts #}
+    {% for game in games %}
+      {% include "feed/_post_card.html" %}
+    {% empty %}
+      <div class="fp-card p-10 text-center text-ink-muted">{{ t.feed_empty }}</div>
+    {% endfor %}
+  </main>
+
+  <div class="hidden xl:block"><div class="sticky top-20">{% include "feed/_right_rail.html" %}</div></div>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{% static 'games/js/hero.js' %}" defer></script>{% endblock %}

@@ -1,8 +1,9 @@
 {% load static %}
 <header class="sticky top-0 z-40 border-b border-edge-subtle bg-canvas/80 backdrop-blur">
   <div class="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4">
-    <a href="/" class="fp-wordmark text-xl text-ink shrink-0" aria-label="{{ site_name }}">
-      <span class="fp-gradient-text">Cod</span>ply
+    <a href="/" class="flex shrink-0 items-center gap-1.5 fp-wordmark text-xl text-ink" aria-label="{{ site_name }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-violet)" aria-hidden="true"><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/><rect x="2" y="6" width="20" height="12" rx="4"/></svg>
+      <span><span class="fp-gradient-text">Cod</span>ply</span>
     </a>
 
     <form action="/search" method="get" class="ms-2 hidden min-w-0 flex-1 items-center md:flex">

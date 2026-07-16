@@ -1,0 +1,59 @@
+{% load game_extras %}
+<article class="flex flex-col rounded-2xl border border-edge bg-surface-1" data-game-id="{{ game.id }}">
+  {# header: avatar · author · @handle · time · genre #}
+  <header class="flex items-center gap-3 px-4 pt-3">
+    <a href="/u/{{ game.owner.handle }}" class="shrink-0">
+      <span class="grid h-10 w-10 place-items-center rounded-full text-sm font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{{ game.owner.display_name|first|upper }}</span>
+    </a>
+    <div class="min-w-0 flex-1">
+      <a href="/u/{{ game.owner.handle }}" class="block truncate text-sm font-semibold text-ink hover:underline">{{ game.owner.display_name }}</a>
+      <p class="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
+        <span dir="ltr" class="truncate">@{{ game.owner.handle }}</span>
+        <span aria-hidden="true">·</span>
+        <time datetime="{{ game.published_at|date:'c' }}" class="shrink-0">{{ game.published_at|default:game.created_at|timesince }}</time>
+      </p>
+    </div>
+    {% if game.genre %}<span class="fp-chip max-w-[42vw] shrink-0 truncate sm:max-w-[15rem]">{{ game.genre }}</span>{% endif %}
+  </header>
+
+  {# caption #}
+  {% with cap=game|loc_summary:locale %}
+    {% if cap %}<div class="px-4 pt-2"><p class="line-clamp-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">{{ cap }}</p></div>{% endif %}
+  {% endwith %}
+
+  {# media: cover + play overlay + title #}
+  <a href="/g/{{ game.slug }}" class="group relative mt-3 block overflow-hidden border-y border-edge-subtle bg-surface-2" aria-label="{{ t.post_play }} {{ game|loc_title:locale }}">
+    {% if game.cover_url %}
+      <img src="{{ game.cover_url }}" alt="{{ game|loc_title:locale }}" loading="lazy" class="aspect-video w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]">
+    {% else %}
+      <div class="flex aspect-video w-full items-center justify-center text-5xl text-ink-muted">🎮</div>
+    {% endif %}
+    <div class="absolute inset-0 flex items-center justify-center transition-colors duration-150 group-hover:bg-black/20">
+      <span class="flex items-center gap-2 rounded-full bg-violet px-5 py-2.5 text-sm font-semibold text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100">▶ {{ t.post_play }}</span>
+    </div>
+    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-2.5 pt-8">
+      <p class="truncate text-base font-bold text-white">{{ game|loc_title:locale }}</p>
+    </div>
+  </a>
+
+  {# actions: like · comment · save · share #}
+  <div class="px-4">
+    {% if game.like_count or game.play_count or game.remix_count %}
+      <p class="border-b border-edge-subtle py-2 text-xs text-ink-muted">
+        {% if game.like_count %}{{ game.like_count }} likes · {% endif %}{{ game.play_count }} plays{% if game.remix_count %} · {{ game.remix_count }} remixes{% endif %}
+      </p>
+    {% endif %}
+    <div class="grid grid-cols-4 py-1">
+      <form method="post" action="/games/{{ game.id }}/like">{% csrf_token %}
+        <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium text-ink-secondary transition-colors hover:bg-surface-2 hover:text-ink">♡<span class="hidden sm:inline">{{ t.post_like }}</span></button>
+      </form>
+      <a href="/g/{{ game.slug }}" class="flex items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium text-ink-secondary transition-colors hover:bg-surface-2 hover:text-ink">💬<span class="hidden sm:inline">{% if game.comment_count %}{{ game.comment_count }}{% else %}{{ t.post_comment }}{% endif %}</span></a>
+      <form method="post" action="/games/{{ game.id }}/save">{% csrf_token %}
+        <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium text-ink-secondary transition-colors hover:bg-surface-2 hover:text-ink">☆<span class="hidden sm:inline">{{ t.post_save }}</span></button>
+      </form>
+      <form method="post" action="/games/{{ game.id }}/share">{% csrf_token %}
+        <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium text-ink-secondary transition-colors hover:bg-surface-2 hover:text-ink">↗<span class="hidden sm:inline">{{ t.post_share }}</span></button>
+      </form>
+    </div>
+  </div>
+</article>
