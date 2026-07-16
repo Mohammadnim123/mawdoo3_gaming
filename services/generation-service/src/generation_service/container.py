@@ -6,6 +6,7 @@ explicit, and nothing else in the codebase instantiates infrastructure.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from generation_service.application.events import JobEventBus
@@ -147,6 +148,9 @@ class Container:
         self.job_runner = BackgroundJobRunner(
             max_concurrent=s.pipeline.generation_max_concurrent
         )
+        # One lock serializes every terminal job transition (success persist,
+        # failure mark, creator cancel) across the in-process runner.
+        self.terminal_lock = asyncio.Lock()
         self.run_generation = RunGenerationUseCase(
             pipeline=self.pipeline,
             jobs=self.jobs,
@@ -158,6 +162,7 @@ class Container:
             timeout_seconds=s.pipeline.generation_timeout_seconds,
             event_store=self.job_events,
             event_bus=self.job_event_bus,
+            terminal_lock=self.terminal_lock,
         )
         self.start_generation = StartGenerationUseCase(
             jobs=self.jobs, runner=self.job_runner, run_generation=self.run_generation
@@ -177,6 +182,7 @@ class Container:
             runner=self.job_runner,
             event_store=self.job_events,
             event_bus=self.job_event_bus,
+            terminal_lock=self.terminal_lock,
         )
         self.get_generation = GetGenerationUseCase(self.jobs)
         self.list_games = ListGamesUseCase(self.games)

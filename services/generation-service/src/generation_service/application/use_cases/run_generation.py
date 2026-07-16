@@ -94,6 +94,7 @@ class RunGenerationUseCase:
         timeout_seconds: float,
         event_store: JobEventStore,
         event_bus: JobEventBus,
+        terminal_lock: asyncio.Lock | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._jobs = jobs
@@ -105,6 +106,11 @@ class RunGenerationUseCase:
         self._timeout_seconds = timeout_seconds
         self._event_store = event_store
         self._event_bus = event_bus
+        # Serializes every terminal decision (success persist, failure mark,
+        # creator cancel) — jobs run in-process by design, so one lock makes
+        # check-then-act transitions atomic. Shared with CancelGeneration; the
+        # seam moves into DB transactions if jobs ever leave this process.
+        self._terminal_lock = terminal_lock or asyncio.Lock()
 
     async def execute(self, job: GenerationJob, resume: bool = False) -> None:
         # CAS QUEUED -> RUNNING: a cancel landing between scheduling and this
@@ -269,12 +275,17 @@ class RunGenerationUseCase:
         user_message: str,
     ) -> None:
         """Mark the job failed unless something (a creator cancel) already
-        finished it — a cancel's task teardown must not overwrite the row."""
-        current = await self._jobs.get(job_id)
-        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-            return
-        await self._jobs.mark_failed(job_id, code, message)
-        await self._emit_failed(emitter, code, user_message)
+        finished it — a cancel's task teardown must not overwrite the row.
+        Runs under the terminal lock so the check and the mark are atomic
+        against a concurrent cancel/success."""
+        async with self._terminal_lock:
+            current = await self._jobs.get(job_id)
+            if current is not None and current.status in (
+                JobStatus.SUCCEEDED, JobStatus.FAILED,
+            ):
+                return
+            await self._jobs.mark_failed(job_id, code, message)
+            await self._emit_failed(emitter, code, user_message)
 
     async def _emit_safe(self, emitter: JobEventEmitter, event: str, data: dict) -> None:
         try:
@@ -314,95 +325,93 @@ class RunGenerationUseCase:
         the pipeline: if persistence itself fails, the job is marked failed
         instead of being stranded in 'running'.
 
-        Success is claimed with a CAS (RUNNING -> SUCCEEDED) BEFORE any
-        product record is written: a creator cancel that landed during the
-        final pipeline awaits keeps the row, and the outcome is discarded —
-        the stored bundle bytes are orphaned, nothing is published."""
-        gate_report = accumulated.get("gate_report")
-        failure = accumulated.get("failure")
-        if failure is not None:
-            await self._fail_unless_terminal_with_report(
-                job.id, emitter, failure.code, failure.message, gate_report
-            )
-            return
+        The whole terminal decision runs under the shared terminal lock, so
+        a creator cancel can never interleave: either it committed first (the
+        status check discards this outcome — bundle bytes are orphaned,
+        nothing published) or it waits and then conflicts on the terminal row.
+        Product records are written BEFORE the status flips to SUCCEEDED —
+        the job keeps holding its game's one-active-job slot until the version
+        row + pointers are durable, and a crash mid-write leaves a RUNNING row
+        for the restart sweep instead of a wedged SUCCEEDED-without-records."""
+        async with self._terminal_lock:
+            current = await self._jobs.get(job.id)
+            if current is not None and current.status in (
+                JobStatus.SUCCEEDED, JobStatus.FAILED,
+            ):
+                logger.info(
+                    "job %s became terminal (%s) mid-run; discarding outcome",
+                    job.id, current.status,
+                )
+                return
 
-        blueprint = accumulated["blueprint"]
-        stored_prefix = accumulated["stored_prefix"]
-        published_game_id = base_game.id if base_game is not None else accumulated["game_id"]
-        if not await self._jobs.mark_succeeded(job.id, published_game_id, gate_report):
-            logger.info("job %s became terminal mid-run; discarding outcome", job.id)
-            return
+            gate_report = accumulated.get("gate_report")
+            failure = accumulated.get("failure")
+            if failure is not None:
+                await self._jobs.mark_failed(job.id, failure.code, failure.message, gate_report)
+                await self._emit_failed(emitter, failure.code, failure.message)
+                return
 
-        if base_game is not None:
-            # Tweak: the gate passed and a NEW immutable version was stored —
-            # record it and advance the game's current pointers + metadata.
+            blueprint = accumulated["blueprint"]
+            stored_prefix = accumulated["stored_prefix"]
+
+            if base_game is not None:
+                # Tweak: the gate passed and a NEW immutable version was
+                # stored — record it and advance the game's current pointers.
+                version = GameVersion(
+                    id=new_id(),
+                    game_id=base_game.id,
+                    version_no=version_no,
+                    parent_id=base_game.current_version_id,
+                    job_id=job.id,
+                    change_summary=job.prompt,
+                    storage_prefix=stored_prefix,
+                    blueprint=blueprint,
+                )
+                await self._versions.add(version)
+                base_game.apply_blueprint(blueprint)
+                base_game.template_version = self._template_version
+                base_game.blueprint_model = self._blueprint_model
+                base_game.code_model = self._code_model
+                base_game.storage_prefix = stored_prefix
+                base_game.current_version_id = version.id
+                base_game.current_version_no = version.version_no
+                await self._games.update(base_game)
+                await self._jobs.mark_succeeded(job.id, base_game.id, gate_report)
+                await self._emit_done(emitter, base_game.id, blueprint, version)
+                logger.info(
+                    "job %s tweaked game %s to v%d (%s)",
+                    job.id, base_game.id, version.version_no, job.prompt,
+                )
+                return
+
             version = GameVersion(
                 id=new_id(),
-                game_id=base_game.id,
-                version_no=version_no,
-                parent_id=base_game.current_version_id,
+                game_id=accumulated["game_id"],
+                version_no=1,
+                parent_id=None,
                 job_id=job.id,
-                change_summary=job.prompt,
+                change_summary=INITIAL_VERSION_SUMMARY,
                 storage_prefix=stored_prefix,
                 blueprint=blueprint,
             )
-            await self._versions.add(version)
-            base_game.apply_blueprint(blueprint)
-            base_game.template_version = self._template_version
-            base_game.blueprint_model = self._blueprint_model
-            base_game.code_model = self._code_model
-            base_game.storage_prefix = stored_prefix
-            base_game.current_version_id = version.id
-            base_game.current_version_no = version.version_no
-            await self._games.update(base_game)
-            await self._emit_done(emitter, base_game.id, blueprint, version)
-            logger.info(
-                "job %s tweaked game %s to v%d (%s)",
-                job.id, base_game.id, version.version_no, job.prompt,
+            game = Game(
+                id=accumulated["game_id"],
+                title_en=blueprint.title.en,
+                title_ar=blueprint.title.ar,
+                genre=blueprint.genre.value,
+                summary=blueprint.summary,
+                default_locale=blueprint.default_locale,
+                prompt=job.prompt,
+                blueprint=blueprint,
+                template_version=self._template_version,
+                blueprint_model=self._blueprint_model,
+                code_model=self._code_model,
+                storage_prefix=stored_prefix,
+                current_version_id=version.id,
+                current_version_no=1,
             )
-            return
-
-        version = GameVersion(
-            id=new_id(),
-            game_id=accumulated["game_id"],
-            version_no=1,
-            parent_id=None,
-            job_id=job.id,
-            change_summary=INITIAL_VERSION_SUMMARY,
-            storage_prefix=stored_prefix,
-            blueprint=blueprint,
-        )
-        game = Game(
-            id=accumulated["game_id"],
-            title_en=blueprint.title.en,
-            title_ar=blueprint.title.ar,
-            genre=blueprint.genre.value,
-            summary=blueprint.summary,
-            default_locale=blueprint.default_locale,
-            prompt=job.prompt,
-            blueprint=blueprint,
-            template_version=self._template_version,
-            blueprint_model=self._blueprint_model,
-            code_model=self._code_model,
-            storage_prefix=stored_prefix,
-            current_version_id=version.id,
-            current_version_no=1,
-        )
-        await self._games.add(game)
-        await self._versions.add(version)
-        await self._emit_done(emitter, game.id, blueprint, version)
-        logger.info("job %s produced game %s (%s)", job.id, game.id, game.title_en)
-
-    async def _fail_unless_terminal_with_report(
-        self,
-        job_id: str,
-        emitter: JobEventEmitter,
-        code,
-        message: str,
-        gate_report,
-    ) -> None:
-        current = await self._jobs.get(job_id)
-        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-            return
-        await self._jobs.mark_failed(job_id, code, message, gate_report)
-        await self._emit_failed(emitter, code, message)
+            await self._games.add(game)
+            await self._versions.add(version)
+            await self._jobs.mark_succeeded(job.id, game.id, gate_report)
+            await self._emit_done(emitter, game.id, blueprint, version)
+            logger.info("job %s produced game %s (%s)", job.id, game.id, game.title_en)
