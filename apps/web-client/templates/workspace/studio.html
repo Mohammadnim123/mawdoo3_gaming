@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load game_extras static %}
 {% block title %}{% if game.is_live %}{{ game|loc_title:locale }}{% else %}{{ t.nav_create }}{% endif %} · {{ site_name }}{% endblock %}
-{% block main_class %}mx-auto w-full max-w-4xl px-4 pb-24 pt-6{% endblock %}
+{% block main_class %}mx-auto w-full max-w-6xl px-4 pb-24 pt-6{% endblock %}
 {% block content %}
 <div class="mb-4 flex items-center gap-3">
   <div class="min-w-0">
@@ -23,60 +23,34 @@
   {% endif %}
 </div>
 
-{% if active %}
-  <div id="workspace" class="fp-card p-5"
-       data-stream-url="/studio/jobs/{{ job.id }}/stream"
-       data-status-url="/studio/jobs/{{ job.id }}/status">
-    <div class="mb-4 flex items-center gap-2 text-ink-secondary">
-      <span class="fp-pulse inline-block h-2.5 w-2.5 rounded-full" style="background:var(--color-violet)"></span>
-      <span id="ws-title">{{ t.ws_thinking }}</span>
-    </div>
-    <ol id="ws-timeline" class="grid gap-2 text-sm"></ol>
-    <div id="ws-failed" hidden class="mt-4 rounded-2xl p-4 text-sm"
-         style="background:color-mix(in srgb, var(--color-danger) 12%, transparent)">
-      <div class="font-semibold text-ink">{{ t.gen_failed }}</div>
-      <div id="ws-failed-msg" class="mt-1 text-ink-secondary">{{ t.gen_failed_message }}</div>
-      <a href="/create" class="fp-btn fp-btn-soft fp-btn-sm mt-3">← {{ t.nav_create }}</a>
+{% if active or game.is_live %}
+  {# React workspace island: live SSE generation, clarify cards, chat edit, #}
+  {# Code view, version tree. Props are server-rendered; session cookie auth. #}
+  {{ island_props|json_script:"workspace-props" }}
+  <div id="workspace-island"
+       data-live-src="{{ game_src }}"
+       class="min-h-[60vh]">
+    <div class="fp-card flex min-h-[40vh] items-center justify-center p-6 text-sm text-ink-muted">
+      <span class="fp-shimmer">{{ t.loading }}</span>
     </div>
   </div>
   <noscript>
-    <div class="fp-card mt-3 p-4 text-sm text-ink-secondary">
-      <meta http-equiv="refresh" content="4">
-      {{ t.status_hint|default:t.ws_thinking }}
-    </div>
+    {% if active %}
+      <div class="fp-card mt-3 p-4 text-sm text-ink-secondary">
+        <meta http-equiv="refresh" content="4">
+        {{ t.ws_thinking }}
+      </div>
+    {% elif game.is_live %}
+      <div class="fp-card overflow-hidden">
+        <div class="relative w-full" style="aspect-ratio:16/10;background:var(--color-surface-2)">
+          <iframe title="{{ game|loc_title:locale }}"
+                  class="absolute inset-0 h-full w-full"
+                  src="{{ game_src }}" sandbox="allow-scripts"
+                  referrerpolicy="no-referrer" allow="fullscreen"></iframe>
+        </div>
+      </div>
+    {% endif %}
   </noscript>
-{% elif game.is_live %}
-  <div class="fp-card overflow-hidden">
-    <div class="relative w-full" style="aspect-ratio:16/10;background:var(--color-surface-2)">
-      <iframe id="game-frame" title="{{ game|loc_title:locale }}"
-              class="absolute inset-0 h-full w-full"
-              src="{{ game_src }}" sandbox="allow-scripts"
-              referrerpolicy="no-referrer" allow="fullscreen"
-              data-game-origin="{{ game_origin }}"></iframe>
-    </div>
-  </div>
-
-  <form method="post" action="/games/{{ game.id }}/chat" class="mt-4 flex items-center gap-2">
-    {% csrf_token %}
-    <input class="fp-input" name="instruction" minlength="2" maxlength="500" required
-           placeholder="{{ t.ws_edit_placeholder }}">
-    <button class="fp-btn fp-btn-cta" type="submit">{{ t.ws_send }}</button>
-  </form>
-
-  {% if versions %}
-  <div class="mt-6">
-    <h2 class="fp-title-section mb-2 text-ink">{{ t.ws_tab_versions }}</h2>
-    <ol class="grid gap-2 text-sm">
-      {% for v in versions %}
-        <li class="fp-card flex items-center gap-3 p-3">
-          <span class="fp-chip">v{{ v.version_no }}</span>
-          <span class="truncate text-ink-secondary">{{ v.change_summary|default:"Initial build" }}</span>
-          <span class="ms-auto text-xs text-ink-muted">{{ v.created_at|date:"M j, H:i" }}</span>
-        </li>
-      {% endfor %}
-    </ol>
-  </div>
-  {% endif %}
 {% else %}
   <div class="fp-card p-8 text-center">
     <div class="mb-2 text-lg font-semibold text-ink">{{ t.gen_failed }}</div>
@@ -86,5 +60,7 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
-{% if active %}<script src="{% static 'games/js/workspace.js' %}" defer></script>{% endif %}
+{% if active or game.is_live %}
+  <script type="module" src="{% static 'games/dist/islands/workspace.js' %}"></script>
+{% endif %}
 {% endblock %}

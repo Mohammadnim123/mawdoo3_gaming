@@ -78,4 +78,9 @@
   <div class="hidden xl:block"><div class="sticky top-20">{% include "feed/_right_rail.html" %}</div></div>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{% static 'games/js/hero.js' %}" defer></script>{% endblock %}
+{% block scripts %}
+<script src="{% static 'games/js/hero.js' %}" defer></script>
+{{ overlay_props|json_script:"overlay-props" }}
+<div id="overlay-island"></div>
+<script type="module" src="{% static 'games/dist/islands/overlay.js' %}"></script>
+{% endblock %}

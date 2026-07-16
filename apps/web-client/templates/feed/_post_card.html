@@ -22,7 +22,7 @@
   {% endwith %}
 
   {# media: cover + play overlay + title #}
-  <a href="/g/{{ game.slug }}" class="group relative mt-3 block overflow-hidden border-y border-edge-subtle bg-surface-2" aria-label="{{ t.post_play }} {{ game|loc_title:locale }}">
+  <a href="/g/{{ game.slug }}" data-overlay-open="{{ game.slug }}" class="group relative mt-3 block overflow-hidden border-y border-edge-subtle bg-surface-2" aria-label="{{ t.post_play }} {{ game|loc_title:locale }}">
     {% if game.cover_url %}
       <img src="{{ game.cover_url }}" alt="{{ game|loc_title:locale }}" loading="lazy" class="aspect-video w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]">
     {% else %}

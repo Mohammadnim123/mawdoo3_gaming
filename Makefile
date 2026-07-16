@@ -26,9 +26,9 @@ setup-web:
 	$(MAKE) migrate-web
 	@echo ">> edit $(WEB_DIR)/.env and set OPENROUTER_API_KEY (prompt validation)"
 
-# Compile the Codply design-system CSS -> games/static/games/dist/app.css
+# Compile the Codply design-system CSS + React islands -> games/static/games/dist/
 build-web:
-	npm --prefix $(WEB_DIR)/frontend run build:css
+	npm --prefix $(WEB_DIR)/frontend run build
 
 migrate-web:
 	cd $(WEB_DIR) && .venv/bin/python manage.py migrate

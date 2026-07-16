@@ -108,6 +108,16 @@ def home(request):
         creators = creators.exclude(id=request.user.id)
     suggested = list(creators[:4])
 
+    from django.middleware.csrf import get_token
+
+    feed_query = f"sort={sort}" + (f"&genre={genre}" if genre else "")
+    overlay_props = {
+        "csrfToken": get_token(request),
+        "locale": _locale(request),
+        "labels": _island_labels(_t(request)),
+        "feedUrl": f"/feed.json?{feed_query}",
+        "authenticated": request.user.is_authenticated,
+    }
     return render(request, "pages/home.html", {
         "games": list(qs[: settings.GAMES_PAGE_SIZE]),
         "sort": sort,
@@ -115,6 +125,7 @@ def home(request):
         "genres": GENRES,
         "trending": trending,
         "suggested": suggested,
+        "overlay_props": overlay_props,
     })
 
 
@@ -251,8 +262,24 @@ def _start_create(request):
 # ---------------------------------------------------------------------------
 # Studio (workspace)
 # ---------------------------------------------------------------------------
+_ISLAND_LABEL_PREFIXES = (
+    "ws_", "clarify_", "composer_", "tab_", "player_", "console_", "code_",
+    "version", "overlay_", "action_",
+)
+
+
+def _island_labels(t: dict) -> dict:
+    return {
+        key: value
+        for key, value in t.items()
+        if isinstance(value, str) and key.startswith(_ISLAND_LABEL_PREFIXES)
+    }
+
+
 @login_required(login_url="/login")
 def studio(request, game_id):
+    from django.middleware.csrf import get_token
+
     game = get_object_or_404(Game, id=game_id, owner=request.user)
     job = game.jobs.order_by("-created_at").first()
     if job is not None and (job.status in _ACTIVE or not game.is_live):
@@ -260,6 +287,51 @@ def studio(request, game_id):
         game.refresh_from_db()
     active = job is not None and job.status in _ACTIVE
     locale = _locale(request)
+
+    job_urls = None
+    job_props = None
+    if job is not None:
+        base = f"/studio/jobs/{job.id}"
+        job_urls = {
+            "stream": f"{base}/stream",
+            "status": f"{base}/status",
+            "answers": f"{base}/answers",
+            "cancel": f"{base}/cancel",
+        }
+        job_props = {
+            "refId": str(job.id),
+            "status": job.status,
+            "prompt": job.prompt,
+            "error": job.error_message or None,
+            "questions": job.questions or [],
+        }
+    island_props = {
+        "csrfToken": get_token(request),
+        "locale": locale,
+        "labels": _island_labels(_t(request)),
+        "game": {
+            "id": str(game.id),
+            "title": game.title(locale),
+            "prompt": game.prompt,
+            "isLive": game.is_live,
+            "slug": game.slug,
+        },
+        "job": job_props if (active or (job is not None and job.status == JobStatus.FAILED
+                                        and not game.is_live)) else None,
+        "jobUrls": job_urls if active else None,
+        "urls": {
+            "chat": f"/games/{game.id}/chat",
+            "versions": f"/games/{game.id}/versions",
+            "rollback": f"/games/{game.id}/rollback",
+            "sourceTemplate": f"/games/{game.id}/versions/VERSION_ID/source",
+            "jobBase": "/studio/jobs/",
+        },
+        "player": (
+            {"src": _game_src(game, locale), "origin": _game_origin(game)}
+            if game.is_live
+            else None
+        ),
+    }
     return render(request, "workspace/studio.html", {
         "game": game,
         "job": job,
@@ -267,6 +339,7 @@ def studio(request, game_id):
         "versions": list(game.versions.order_by("-version_no")),
         "game_src": _game_src(game, locale) if game.is_live else "",
         "game_origin": _game_origin(game) if game.is_live else "",
+        "island_props": island_props,
     })
 
 
@@ -492,18 +565,33 @@ def game_post(request, game_id):
 @require_POST
 def game_chat(request, game_id):
     game = get_object_or_404(Game, id=game_id, owner=request.user)
+    wants_json = "application/json" in (
+        request.headers.get("Accept") or ""
+    ) or request.content_type == "application/json"
     instruction = (request.POST.get("instruction") or "").strip()
+    if not instruction and request.content_type == "application/json" and request.body:
+        try:
+            instruction = str((json.loads(request.body) or {}).get("instruction") or "").strip()
+        except ValueError:
+            instruction = ""
     if not instruction or not game.service_game_id:
+        if wants_json:
+            return JsonResponse({"error": "instruction required"}, status=400)
         return redirect(f"/studio/{game.id}")
     try:
         job = get_client().start_tweak(game.service_game_id, instruction)
-    except GenerationApiError:
+    except GenerationApiError as exc:
+        if wants_json:
+            status = exc.status_code if exc.status_code in (404, 409) else 502
+            return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
         messages.error(request, _t(request)["service_error"])
         return redirect(f"/studio/{game.id}")
-    GenerationJobRef.objects.create(
+    job_ref = GenerationJobRef.objects.create(
         service_job_id=job["id"], user=request.user, game=game,
         type=JobType.EDIT, prompt=instruction, status=JobStatus.QUEUED,
     )
+    if wants_json:
+        return JsonResponse({"job_ref_id": str(job_ref.id)}, status=201)
     return redirect(f"/studio/{game.id}")
 
 
