@@ -97,9 +97,18 @@ export function WorkspaceIsland(props: WorkspaceProps) {
   // Terminal handling: confirm via the status endpoint (which also finalizes
   // the product record). Auto-reload into the live workspace only when the
   // creator isn't mid-thought — a draft in the composer must never be lost.
+  //
+  // finalizedRef re-arms ONLY when the (new) stream actually resets to
+  // 'connecting' — never at send time. Right after a follow-up edit swaps
+  // jobUrls, this effect re-runs against the PREVIOUS job's terminal phase
+  // (the hook's reset lands a render later); acting then would instantly
+  // finalize the brand-new job against stale state.
   const inputRef = useRef(input);
   inputRef.current = input;
   const [readyToReveal, setReadyToReveal] = useState(false);
+  useEffect(() => {
+    if (stream.phase === "connecting") finalizedRef.current = false;
+  }, [stream.phase]);
   useEffect(() => {
     if (!jobUrls || finalizedRef.current) return;
     if (stream.phase !== "done" && stream.phase !== "failed") return;
@@ -135,8 +144,20 @@ export function WorkspaceIsland(props: WorkspaceProps) {
           } else if (snap.status === "cancelled" || snap.status === "expired") {
             setJob((j) => (j ? { ...j, status: snap.status } : j));
           } else if (snap.status === "awaiting_input" && snap.questions?.length) {
+            // Never downgrade an optimistic 'running' (answers just sent) —
+            // a stale poll response must not resurrect answered cards.
             setJob((j) =>
-              j ? { ...j, status: "awaiting_input", questions: snap.questions ?? [] } : j,
+              j && j.status !== "running"
+                ? { ...j, status: "awaiting_input", questions: snap.questions ?? [] }
+                : j,
+            );
+          } else if (snap.status === "queued" || snap.status === "running") {
+            // Reconcile forward (e.g. after answers resumed the job) so the
+            // awaiting predicate collapses even if the SSE stream is dead.
+            setJob((j) =>
+              j && j.status !== snap.status
+                ? { ...j, status: snap.status, questions: [] }
+                : j,
             );
           } else if (snap.status === "succeeded" && !finalizedRef.current) {
             finalizedRef.current = true;
@@ -184,7 +205,9 @@ export function WorkspaceIsland(props: WorkspaceProps) {
       .then((payload) => {
         setInput("");
         setCancelled(false);
-        finalizedRef.current = false;
+        setReadyToReveal(false);
+        // finalizedRef re-arms when the new stream resets to 'connecting' —
+        // NOT here, or the terminal effect fires on the old stream's phase.
         const base = `${props.urls.jobBase}${payload.job_ref_id}`;
         setJob({
           refId: payload.job_ref_id,
@@ -273,7 +296,7 @@ export function WorkspaceIsland(props: WorkspaceProps) {
             />
           )}
 
-          {stream.phase === "done" && (
+          {(stream.phase === "done" || job?.status === "succeeded") && (
             <div className="space-y-2">
               <p className="text-sm text-[var(--color-success)]">
                 {t.ws_done} {stream.doneTitle ? `— ${stream.doneTitle}` : ""}

@@ -107,19 +107,17 @@ class RunGenerationUseCase:
         self._event_bus = event_bus
 
     async def execute(self, job: GenerationJob, resume: bool = False) -> None:
-        # A cancel can land between scheduling and this task actually starting
-        # (e.g. right after answers resumed the job) — never run, and never
-        # flip the row back to RUNNING, once it is terminal.
-        current = await self._jobs.get(job.id)
-        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-            logger.info("job %s already terminal (%s); skipping run", job.id, current.status)
+        # CAS QUEUED -> RUNNING: a cancel landing between scheduling and this
+        # task starting (e.g. right after answers resumed the job) wins here —
+        # the run never starts and the terminal row is never overwritten.
+        if not await self._jobs.mark_running(job.id):
+            logger.info("job %s is no longer queued; skipping run", job.id)
             return
 
         # Resumed jobs continue the same event log — seed the seq counter from
         # what is already persisted so ids stay monotonic across the pause.
         start_seq = await self._event_store.last_seq(job.id) if resume else 0
         emitter = JobEventEmitter(job.id, self._event_store, self._event_bus, start_seq)
-        await self._jobs.set_status(job.id, JobStatus.RUNNING)
 
         base_game = None
         version_no = 1
@@ -314,27 +312,26 @@ class RunGenerationUseCase:
     ) -> None:
         """Persist success or gate failure. Runs inside the same error net as
         the pipeline: if persistence itself fails, the job is marked failed
-        instead of being stranded in 'running'."""
-        # A creator cancel that landed during the final pipeline awaits must
-        # win: never publish over a terminal row (the bundle bytes are already
-        # stored, but no game/version/succeeded record is created).
-        current = await self._jobs.get(job.id)
-        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-            logger.info(
-                "job %s became terminal (%s) mid-run; discarding outcome",
-                job.id, current.status,
-            )
-            return
+        instead of being stranded in 'running'.
 
+        Success is claimed with a CAS (RUNNING -> SUCCEEDED) BEFORE any
+        product record is written: a creator cancel that landed during the
+        final pipeline awaits keeps the row, and the outcome is discarded —
+        the stored bundle bytes are orphaned, nothing is published."""
         gate_report = accumulated.get("gate_report")
         failure = accumulated.get("failure")
         if failure is not None:
-            await self._jobs.mark_failed(job.id, failure.code, failure.message, gate_report)
-            await self._emit_failed(emitter, failure.code, failure.message)
+            await self._fail_unless_terminal_with_report(
+                job.id, emitter, failure.code, failure.message, gate_report
+            )
             return
 
         blueprint = accumulated["blueprint"]
         stored_prefix = accumulated["stored_prefix"]
+        published_game_id = base_game.id if base_game is not None else accumulated["game_id"]
+        if not await self._jobs.mark_succeeded(job.id, published_game_id, gate_report):
+            logger.info("job %s became terminal mid-run; discarding outcome", job.id)
+            return
 
         if base_game is not None:
             # Tweak: the gate passed and a NEW immutable version was stored —
@@ -358,7 +355,6 @@ class RunGenerationUseCase:
             base_game.current_version_id = version.id
             base_game.current_version_no = version.version_no
             await self._games.update(base_game)
-            await self._jobs.mark_succeeded(job.id, base_game.id, gate_report)
             await self._emit_done(emitter, base_game.id, blueprint, version)
             logger.info(
                 "job %s tweaked game %s to v%d (%s)",
@@ -394,6 +390,19 @@ class RunGenerationUseCase:
         )
         await self._games.add(game)
         await self._versions.add(version)
-        await self._jobs.mark_succeeded(job.id, game.id, gate_report)
         await self._emit_done(emitter, game.id, blueprint, version)
         logger.info("job %s produced game %s (%s)", job.id, game.id, game.title_en)
+
+    async def _fail_unless_terminal_with_report(
+        self,
+        job_id: str,
+        emitter: JobEventEmitter,
+        code,
+        message: str,
+        gate_report,
+    ) -> None:
+        current = await self._jobs.get(job_id)
+        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
+            return
+        await self._jobs.mark_failed(job_id, code, message, gate_report)
+        await self._emit_failed(emitter, code, message)

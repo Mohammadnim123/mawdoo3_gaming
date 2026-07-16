@@ -55,9 +55,15 @@ class JobRepository(Protocol):
 
     async def set_stage(self, job_id: str, stage: PipelineStage) -> None: ...
 
+    async def mark_running(self, job_id: str) -> bool:
+        """CAS QUEUED -> RUNNING; False = the job moved on, do not run."""
+        ...
+
     async def mark_succeeded(
         self, job_id: str, game_id: str, gate_report: GateReport | None
-    ) -> None: ...
+    ) -> bool:
+        """CAS RUNNING -> SUCCEEDED; False = a terminal state won, discard."""
+        ...
 
     async def mark_failed(
         self,

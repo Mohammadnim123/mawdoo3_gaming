@@ -361,8 +361,14 @@ def stream_proxy(request, job_ref_id):
     def gen():
         try:
             yield from get_client().iter_stream(jr.service_job_id, last)
-        except GenerationApiError:
-            yield b'event: failed\ndata: {"error_user_msg": "stream unavailable"}\n\n'
+        except GenerationApiError as exc:
+            # Permanent conditions (job unknown upstream) get a terminal frame.
+            # Transient drops (engine restart, connection blip) just end the
+            # response WITHOUT one: the browser's EventSource reconnects with
+            # Last-Event-ID and the status poll reconciles meanwhile — a fake
+            # 'failed' here would freeze a healthy job's UI red forever.
+            if exc.status_code == 404:
+                yield b'event: failed\ndata: {"error_user_msg": "stream unavailable"}\n\n'
 
     resp = StreamingHttpResponse(gen(), content_type="text/event-stream")
     resp["Cache-Control"] = "no-cache"
@@ -494,6 +500,30 @@ def game_rollback(request, game_id):
     # refuse before touching either side (the engine enforces this too).
     if game.jobs.filter(status__in=_ACTIVE).exists():
         return refuse(GenerationApiError("this game is being updated", "conflict", 409))
+
+    # A version finalized while the engine catalog was unreachable has no
+    # engine link. Repair it by job id before rolling back; a local-only flip
+    # would silently diverge from what the engine actually serves.
+    if game.service_game_id and not version.service_version_id:
+        try:
+            items = get_client().list_versions(game.service_game_id).get("items") or []
+            job_service_id = (
+                version.created_by_job.service_job_id if version.created_by_job else None
+            )
+            match = next(
+                (v for v in items if job_service_id and v.get("job_id") == job_service_id),
+                None,
+            )
+            if match:
+                version.service_version_id = match.get("id") or ""
+                version.play_url = match.get("play_url") or version.play_url
+                version.save(update_fields=["service_version_id", "play_url"])
+        except GenerationApiError:
+            pass
+        if not version.service_version_id:
+            return refuse(
+                GenerationApiError("this version is not linked to the engine", "conflict", 409)
+            )
 
     if game.service_game_id and version.service_version_id:
         try:

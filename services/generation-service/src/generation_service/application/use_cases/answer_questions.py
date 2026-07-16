@@ -48,8 +48,11 @@ class AnswerQuestionsUseCase:
         if not await self._jobs.set_answers(job.id, cleaned):
             raise ConflictError("this generation is not waiting for answers")
 
-        job = await self._jobs.get(job.id)
-        assert job is not None
+        # Mutate the row we already hold instead of re-reading: any failure
+        # between the CAS and the submit would strand the job in QUEUED with
+        # no task and no way to retry (the CAS can never pass again).
+        job.answers = cleaned
+        job.status = JobStatus.QUEUED
         self._runner.submit(
             self._run_generation.execute(job, resume=True), name=f"generation:{job.id}"
         )

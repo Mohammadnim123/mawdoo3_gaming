@@ -257,19 +257,36 @@ class SqliteJobRepository:
     async def set_stage(self, job_id: str, stage: PipelineStage) -> None:
         await self._touch(job_id, "stage = ?", (stage.value,))
 
+    async def mark_running(self, job_id: str) -> bool:
+        """CAS QUEUED -> RUNNING. False means the job moved on (a cancel
+        landed while it sat in the queue) — the run must not start."""
+        rows = await self._db.execute_write(
+            "UPDATE generation_jobs SET status = ?, updated_at = ? "
+            "WHERE id = ? AND status = ?",
+            (JobStatus.RUNNING.value, _iso(utcnow()), job_id, JobStatus.QUEUED.value),
+        )
+        return rows > 0
+
     async def mark_succeeded(
         self, job_id: str, game_id: str, gate_report: GateReport | None
-    ) -> None:
-        await self._touch(
-            job_id,
-            "status = ?, stage = ?, game_id = ?, gate_report_json = ?",
+    ) -> bool:
+        """CAS RUNNING -> SUCCEEDED. False means something terminal (a
+        creator cancel) already claimed the row — the outcome must be
+        discarded, never published over it."""
+        rows = await self._db.execute_write(
+            "UPDATE generation_jobs SET status = ?, stage = ?, game_id = ?, "
+            "gate_report_json = ?, updated_at = ? WHERE id = ? AND status = ?",
             (
                 JobStatus.SUCCEEDED.value,
                 PipelineStage.DONE.value,
                 game_id,
                 gate_report.model_dump_json() if gate_report else None,
+                _iso(utcnow()),
+                job_id,
+                JobStatus.RUNNING.value,
             ),
         )
+        return rows > 0
 
     async def mark_failed(
         self,

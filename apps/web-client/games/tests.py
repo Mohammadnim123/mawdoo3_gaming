@@ -79,18 +79,30 @@ class FakeClient:
         return {"id": job_id, "status": "failed"}
 
     def list_versions(self, game_id):
+        # Two versions from two different jobs: finalize must pick by job_id,
+        # not "the newest" (out-of-order syncs would mislabel versions).
         return {
             "items": [
                 {
                     "id": "svc-v1",
                     "version_no": 1,
                     "parent_id": None,
+                    "job_id": "svc-job-1",
                     "change_summary": "Initial version",
                     "play_url": f"http://localhost:8002/games/{game_id}/v1/index.html",
                     "created_at": "2026-07-16T00:00:00Z",
-                }
+                },
+                {
+                    "id": "svc-v2",
+                    "version_no": 2,
+                    "parent_id": "svc-v1",
+                    "job_id": "svc-job-other",
+                    "change_summary": "someone else's edit",
+                    "play_url": f"http://localhost:8002/games/{game_id}/v2/index.html",
+                    "created_at": "2026-07-16T00:01:00Z",
+                },
             ],
-            "current_version_id": "svc-v1",
+            "current_version_id": "svc-v2",
         }
 
     def get_version_source(self, game_id, version_id):
@@ -172,6 +184,11 @@ class CreateFlowTests(TestCase):
         self.assertEqual(game.title_en, "My Game")
         self.assertTrue(game.versions.exists())
         self.assertContains(r, "iframe")
+        # Finalize mirrored THIS job's engine version (matched by job_id),
+        # not the catalog's newest entry (svc-v2 belongs to another job).
+        version = game.versions.get()
+        self.assertEqual(version.service_version_id, "svc-v1")
+        self.assertIn("/v1/index.html", version.play_url)
 
 
 class GameDetailTests(TestCase):

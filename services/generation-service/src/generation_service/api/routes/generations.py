@@ -115,18 +115,15 @@ async def stream_generation(
     async def gen():
         nonlocal last_seq
         try:
-            saw_terminal = False
             for event in await store.list_since(job_id, last_seq):
                 yield _sse_frame(event)
                 last_seq = event.seq
                 if event.event in _TERMINAL_EVENTS:
-                    saw_terminal = True
                     return
-            if not saw_terminal:
-                synthetic = synthesized_terminal(last_seq)
-                if synthetic is not None:
-                    yield _sse_frame(synthetic)
-                    return
+            synthetic = synthesized_terminal(last_seq)
+            if synthetic is not None:
+                yield _sse_frame(synthetic)
+                return
             while True:
                 if await request.is_disconnected():
                     return
