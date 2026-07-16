@@ -57,6 +57,7 @@ def sync_job(job_ref: GenerationJobRef) -> GenerationJobRef:
     status = _ENGINE_STATUS.get(snap.get("status", ""), job_ref.status)
     job_ref.status = status
     job_ref.stage = snap.get("stage") or job_ref.stage
+    job_ref.questions = snap.get("questions") or []
     err = snap.get("error") or {}
     job_ref.error_code = (err.get("code") or "")[:64]
     job_ref.error_message = (err.get("message") or "")[:280]
@@ -93,12 +94,34 @@ def _finalize_success(client, job_ref: GenerationJobRef, game: Game, svc_game_id
     game.summary_ar = summary or game.summary_ar
     game.default_locale = svc.get("default_locale", "en") or "en"
 
+    # The engine's version catalog is the source of truth: mirror the real
+    # version id + immutable per-version play_url (the engine now stores every
+    # build under games/{id}/v{n}). Falls back to the game-level play_url for
+    # engines predating versions.
+    from django.db.models import Max
+
+    local_max = game.versions.aggregate(n=Max("version_no"))["n"] or 0
+    version_no = local_max + 1
+    svc_version_id = svc_game_id
+    play_url = svc.get("play_url", "") or ""
+    try:
+        items = client.list_versions(svc_game_id).get("items") or []
+        if items:
+            newest = items[-1]
+            svc_version_id = newest.get("id") or svc_version_id
+            play_url = newest.get("play_url") or play_url
+            engine_no = int(newest.get("version_no") or 0)
+            if engine_no > local_max:  # never collide with (game, version_no)
+                version_no = engine_no
+    except GenerationApiError:
+        logger.info("engine versions unavailable for %s; using game-level url", svc_game_id)
+
     version = GameVersion.objects.create(
         game=game,
-        version_no=game.versions.count() + 1,
+        version_no=version_no,
         parent=None if was_draft else game.current_version,
-        play_url=svc.get("play_url", "") or "",
-        service_version_id=svc_game_id,
+        play_url=play_url,
+        service_version_id=svc_version_id,
         created_by_job=job_ref,
         change_summary="" if was_draft else job_ref.prompt[:280],
     )

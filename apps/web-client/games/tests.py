@@ -8,7 +8,14 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from games.models import Game, GameStatus, GameVersion, Visibility
+from games.models import (
+    Game,
+    GameStatus,
+    GameVersion,
+    GenerationJobRef,
+    JobStatus,
+    Visibility,
+)
 from games.services.prompt_validation import PromptVerdict
 
 User = get_user_model()
@@ -16,12 +23,36 @@ User = get_user_model()
 PLAY_URL = "http://localhost:8002/games/svc-game-1/index.html"
 
 
+QUESTIONS = [
+    {
+        "id": "q_1",
+        "question": "What theme?",
+        "options": [{"id": "opt_1", "label": "Space"}, {"id": "opt_2", "label": "Jungle"}],
+        "default_option_id": "opt_1",
+    }
+]
+
+
 class FakeClient:
+    """Mirrors the engine's public API shapes (see generation-service DTOs)."""
+
+    def __init__(self, generation_status="succeeded"):
+        self._generation_status = generation_status
+        self.answers_submitted = None
+        self.cancelled = False
+        self.rolled_back_to = None
+
     def start_generation(self, prompt, locale=None, skip_questions=False):
         return {"id": "svc-job-1", "status": "queued", "stage": "queued"}
 
     def get_generation(self, job_id):
-        return {"id": job_id, "status": "succeeded", "stage": "done", "game_id": "svc-game-1"}
+        snap = {"id": job_id, "status": self._generation_status, "stage": "done"}
+        if self._generation_status == "succeeded":
+            snap["game_id"] = "svc-game-1"
+        if self._generation_status == "awaiting_input":
+            snap["stage"] = "clarifying"
+            snap["questions"] = QUESTIONS
+        return snap
 
     def get_game(self, game_id):
         return {
@@ -35,6 +66,41 @@ class FakeClient:
 
     def start_tweak(self, game_id, instruction):
         return {"id": "svc-job-2", "status": "queued"}
+
+    def submit_answers(self, job_id, answers):
+        self.answers_submitted = (job_id, answers)
+        return {"id": job_id, "status": "queued"}
+
+    def cancel_generation(self, job_id):
+        self.cancelled = True
+        return {"id": job_id, "status": "failed"}
+
+    def list_versions(self, game_id):
+        return {
+            "items": [
+                {
+                    "id": "svc-v1",
+                    "version_no": 1,
+                    "parent_id": None,
+                    "change_summary": "Initial version",
+                    "play_url": f"http://localhost:8002/games/{game_id}/v1/index.html",
+                    "created_at": "2026-07-16T00:00:00Z",
+                }
+            ],
+            "current_version_id": "svc-v1",
+        }
+
+    def get_version_source(self, game_id, version_id):
+        return {
+            "version_id": version_id,
+            "source_html": "<!doctype html><title>x</title>",
+            "game_js": "// js",
+            "game_css": ".x{}",
+        }
+
+    def rollback(self, game_id, version_id):
+        self.rolled_back_to = version_id
+        return {"version_id": version_id, "version_no": 1, "play_url": PLAY_URL}
 
 
 def _live_public_game(owner) -> Game:
@@ -141,3 +207,150 @@ class PublishTests(TestCase):
         self.assertEqual(r.status_code, 302)
         game.refresh_from_db()
         self.assertEqual(game.visibility, Visibility.PUBLIC)
+
+
+class ClarifyFlowTests(TestCase):
+    """awaiting_input surfaces questions; answers resume; cancel stops."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="c@x.com", password="pass12345")
+        self.client.force_login(self.user)
+        self.game = Game.objects.create(
+            owner=self.user, slug="draft-x", status=GameStatus.DRAFT,
+            visibility=Visibility.PRIVATE, prompt="a jungle game",
+        )
+        self.job = GenerationJobRef.objects.create(
+            service_job_id="svc-job-1", user=self.user, game=self.game,
+            prompt="a jungle game",
+        )
+
+    @patch("games.views.get_client")
+    @patch("games.sync.get_client")
+    def test_status_carries_questions_while_awaiting(self, sync_client, _views_client):
+        sync_client.return_value = FakeClient(generation_status="awaiting_input")
+        r = self.client.get(f"/studio/jobs/{self.job.id}/status")
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertEqual(payload["status"], "awaiting_input")
+        self.assertEqual(payload["questions"][0]["id"], "q_1")
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.questions, QUESTIONS)
+
+    @patch("games.views.get_client")
+    def test_answers_resume(self, views_client):
+        fake = FakeClient()
+        views_client.return_value = fake
+        self.job.status = JobStatus.AWAITING_INPUT
+        self.job.questions = QUESTIONS
+        self.job.save()
+        r = self.client.post(
+            f"/studio/jobs/{self.job.id}/answers",
+            data='{"answers": {"q_1": "opt_2"}}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "resumed")
+        self.assertEqual(fake.answers_submitted, ("svc-job-1", {"q_1": "opt_2"}))
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, JobStatus.RUNNING)
+        self.assertEqual(self.job.questions, [])
+
+    @patch("games.views.get_client")
+    def test_answers_require_ownership(self, views_client):
+        views_client.return_value = FakeClient()
+        stranger = User.objects.create_user(email="s@x.com", password="pass12345")
+        self.client.force_login(stranger)
+        r = self.client.post(
+            f"/studio/jobs/{self.job.id}/answers",
+            data='{"answers": {}}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 404)
+
+    @patch("games.views.get_client")
+    def test_cancel(self, views_client):
+        fake = FakeClient()
+        views_client.return_value = fake
+        r = self.client.post(f"/studio/jobs/{self.job.id}/cancel")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(fake.cancelled)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, JobStatus.CANCELLED)
+
+
+class VersionsApiTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(email="o@x.com", password="pass12345")
+        self.game = _live_public_game(self.owner)
+        self.game.service_game_id = "svc-game-1"
+        self.game.save(update_fields=["service_game_id"])
+        self.v1 = self.game.current_version
+        self.v1.service_version_id = "svc-v1"
+        self.v1.save(update_fields=["service_version_id"])
+        self.v2 = GameVersion.objects.create(
+            game=self.game, version_no=2, parent=self.v1, play_url=PLAY_URL,
+            service_version_id="svc-v2", change_summary="make it faster",
+        )
+        self.game.current_version = self.v2
+        self.game.save(update_fields=["current_version"])
+        self.client.force_login(self.owner)
+
+    def test_versions_json(self):
+        r = self.client.get(f"/games/{self.game.id}/versions")
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertEqual([v["version_no"] for v in payload["items"]], [1, 2])
+        self.assertEqual(payload["current_version_id"], str(self.v2.id))
+        self.assertEqual(payload["items"][1]["parent_version_id"], str(self.v1.id))
+
+    def test_versions_json_owner_only(self):
+        stranger = User.objects.create_user(email="s@x.com", password="pass12345")
+        self.client.force_login(stranger)
+        self.assertEqual(self.client.get(f"/games/{self.game.id}/versions").status_code, 404)
+
+    @patch("games.views.get_client")
+    def test_version_source(self, views_client):
+        views_client.return_value = FakeClient()
+        r = self.client.get(f"/games/{self.game.id}/versions/{self.v1.id}/source")
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertEqual(payload["version_id"], str(self.v1.id))
+        self.assertIn("<!doctype html>", payload["source_html"])
+        self.assertEqual(payload["game_js"], "// js")
+
+    @patch("games.views.get_client")
+    def test_rollback_flips_pointer(self, views_client):
+        fake = FakeClient()
+        views_client.return_value = fake
+        r = self.client.post(
+            f"/games/{self.game.id}/rollback", {"version_id": str(self.v1.id)}
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(fake.rolled_back_to, "svc-v1")
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.current_version_id, self.v1.id)
+
+
+class FeedJsonTests(TestCase):
+    def test_feed_json_lists_playable_games(self):
+        owner = User.objects.create_user(
+            email="o@x.com", password="pass12345", handle="maker"
+        )
+        _live_public_game(owner)
+        r = self.client.get("/feed.json")
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertEqual(len(payload["items"]), 1)
+        item = payload["items"][0]
+        self.assertEqual(item["slug"], "my-game")
+        self.assertIn(PLAY_URL, item["play_url"])
+        self.assertEqual(item["game_origin"], "http://localhost:8002")
+        self.assertEqual(item["owner"]["handle"], "maker")
+        self.assertIsNone(payload["next_offset"])
+
+    def test_feed_json_excludes_private(self):
+        owner = User.objects.create_user(email="o@x.com", password="pass12345")
+        game = _live_public_game(owner)
+        game.visibility = Visibility.PRIVATE
+        game.save(update_fields=["visibility"])
+        self.assertEqual(len(self.client.get("/feed.json").json()["items"]), 0)

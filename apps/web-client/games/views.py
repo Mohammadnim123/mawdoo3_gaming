@@ -9,6 +9,7 @@ same-origin proxy here.
 
 from __future__ import annotations
 
+import json
 import uuid
 from urllib.parse import urlsplit
 
@@ -26,6 +27,7 @@ from games.constants import PROMPT_MAX_CHARS, PROMPT_MIN_CHARS
 from games.models import (
     Game,
     GameStatus,
+    GameVersion,
     GenerationJobRef,
     JobStatus,
     JobType,
@@ -113,6 +115,84 @@ def home(request):
         "genres": GENRES,
         "trending": trending,
         "suggested": suggested,
+    })
+
+
+def _feed_queryset(request, sort: str, genre: str | None):
+    base = Game.objects.filter(
+        status=GameStatus.LIVE, visibility=Visibility.PUBLIC
+    ).select_related("owner", "current_version")
+    if genre:
+        base = base.filter(genre=genre)
+    if sort == "following" and request.user.is_authenticated:
+        following_ids = list(request.user.following_set.values_list("following_id", flat=True))
+        return base.filter(owner_id__in=following_ids).order_by("-published_at", "-created_at")
+    if sort == "trending":
+        return base.order_by("-play_count", "-like_count", "-published_at")
+    return base.order_by("-published_at", "-created_at")
+
+
+@require_GET
+def feed_json(request):
+    """Playable feed for the overlay island: ordered games with everything the
+    vertical player needs (play_url + sandbox origin + social counts)."""
+    sort = request.GET.get("sort", "for_you")
+    genre = (request.GET.get("genre") or "").strip() or None
+    try:
+        offset = max(0, int(request.GET.get("offset", 0)))
+        limit = min(50, max(1, int(request.GET.get("limit", settings.GAMES_PAGE_SIZE))))
+    except ValueError:
+        offset, limit = 0, settings.GAMES_PAGE_SIZE
+
+    qs = _feed_queryset(request, sort, genre)
+    games = list(qs[offset : offset + limit + 1])
+    has_more = len(games) > limit
+    games = games[:limit]
+
+    liked_ids = saved_ids = set()
+    if request.user.is_authenticated and games:
+        from social.models import Like, Save
+
+        ids = [g.id for g in games]
+        liked_ids = set(
+            Like.objects.filter(user=request.user, game_id__in=ids)
+            .values_list("game_id", flat=True)
+        )
+        saved_ids = set(
+            Save.objects.filter(user=request.user, game_id__in=ids)
+            .values_list("game_id", flat=True)
+        )
+
+    locale = _locale(request)
+    items = [
+        {
+            "id": str(g.id),
+            "slug": g.slug,
+            "title": g.title(locale),
+            "genre": g.genre,
+            "summary": g.summary(locale),
+            "cover_url": g.cover_url,
+            "play_url": _game_src(g, locale),
+            "game_origin": _game_origin(g),
+            "owner": {
+                "handle": g.owner.handle,
+                "display_name": g.owner.display_name or g.owner.handle,
+                "avatar_url": g.owner.avatar_url,
+            },
+            "play_count": g.play_count,
+            "like_count": g.like_count,
+            "comment_count": g.comment_count,
+            "save_count": g.save_count,
+            "share_count": g.share_count,
+            "remix_count": g.remix_count,
+            "viewer": {"liked": g.id in liked_ids, "saved": g.id in saved_ids},
+        }
+        for g in games
+        if g.is_live
+    ]
+    return JsonResponse({
+        "items": items,
+        "next_offset": offset + limit if has_more else None,
     })
 
 
@@ -219,10 +299,139 @@ def job_status(request, job_ref_id):
         "stage_label": stage_label(_locale(request), jr.stage or ""),
         "error": jr.error_message or None,
     }
+    if jr.status == JobStatus.AWAITING_INPUT:
+        payload["questions"] = jr.questions or []
     if jr.status == JobStatus.SUCCEEDED and jr.game_id:
         payload["redirect_url"] = f"/studio/{jr.game_id}"
         payload["game_id"] = str(jr.game_id)
     return JsonResponse(payload)
+
+
+@login_required(login_url="/login")
+@require_POST
+def job_answers(request, job_ref_id):
+    """Answer a paused job's clarifying questions (island fetch, JSON body
+    {"answers": {qid: option_id}}; empty = 'Surprise me')."""
+    jr = get_object_or_404(GenerationJobRef, id=job_ref_id, user=request.user)
+    try:
+        body = json.loads(request.body or b"{}")
+    except ValueError:
+        return JsonResponse({"error": "invalid JSON"}, status=400)
+    answers = body.get("answers") or {}
+    if not isinstance(answers, dict):
+        return JsonResponse({"error": "answers must be an object"}, status=400)
+    answers = {str(k)[:64]: str(v)[:300] for k, v in answers.items()}
+    try:
+        get_client().submit_answers(jr.service_job_id, answers)
+    except GenerationApiError as exc:
+        status = exc.status_code if exc.status_code in (404, 409) else 502
+        return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
+    jr.status = JobStatus.RUNNING
+    jr.questions = []
+    jr.save(update_fields=["status", "questions", "updated_at"])
+    return JsonResponse({"status": "resumed"})
+
+
+@login_required(login_url="/login")
+@require_POST
+def job_cancel(request, job_ref_id):
+    """Stop an in-flight generation (the workspace STOP button)."""
+    jr = get_object_or_404(GenerationJobRef, id=job_ref_id, user=request.user)
+    try:
+        get_client().cancel_generation(jr.service_job_id)
+    except GenerationApiError as exc:
+        status = exc.status_code if exc.status_code in (404, 409) else 502
+        return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
+    jr.status = JobStatus.CANCELLED
+    jr.save(update_fields=["status", "updated_at"])
+    return JsonResponse({"status": "cancelled"})
+
+
+# ---------------------------------------------------------------------------
+# Versions (owner) — catalog JSON, code view source, rollback
+# ---------------------------------------------------------------------------
+def _versions_payload(game: Game) -> list[dict]:
+    return [
+        {
+            "id": str(v.id),
+            "version_no": v.version_no,
+            "parent_version_id": str(v.parent_id) if v.parent_id else None,
+            "change_summary": v.change_summary,
+            "play_url": v.play_url,
+            "created_at": v.created_at.isoformat(),
+        }
+        for v in game.versions.order_by("version_no")
+    ]
+
+
+@login_required(login_url="/login")
+@require_GET
+def game_versions(request, game_id):
+    game = get_object_or_404(Game, id=game_id, owner=request.user)
+    return JsonResponse({
+        "items": _versions_payload(game),
+        "current_version_id": str(game.current_version_id) if game.current_version_id else None,
+    })
+
+
+@login_required(login_url="/login")
+@require_GET
+def version_source(request, game_id, version_id):
+    """The Code view's data: this version's bundle files, via the engine."""
+    game = get_object_or_404(Game, id=game_id, owner=request.user)
+    version = get_object_or_404(GameVersion, id=version_id, game=game)
+    if not game.service_game_id or not version.service_version_id:
+        raise Http404
+    try:
+        source = get_client().get_version_source(
+            game.service_game_id, version.service_version_id
+        )
+    except GenerationApiError as exc:
+        if exc.status_code == 404:
+            raise Http404 from exc
+        return JsonResponse({"error": str(exc)}, status=502)
+    return JsonResponse({
+        "version_id": str(version.id),
+        "source_html": source.get("source_html", ""),
+        "game_js": source.get("game_js", ""),
+        "game_css": source.get("game_css", ""),
+    })
+
+
+@login_required(login_url="/login")
+@require_POST
+def game_rollback(request, game_id):
+    """Make an older version current again — engine pointer flip mirrored
+    locally. Accepts form or JSON {"version_id": <local version uuid>}."""
+    game = get_object_or_404(Game, id=game_id, owner=request.user)
+    version_id = request.POST.get("version_id")
+    if not version_id and request.body:
+        try:
+            version_id = (json.loads(request.body) or {}).get("version_id")
+        except ValueError:
+            version_id = None
+    version = get_object_or_404(GameVersion, id=version_id, game=game)
+    wants_json = "application/json" in (request.headers.get("Accept") or "")
+
+    if game.service_game_id and version.service_version_id:
+        try:
+            get_client().rollback(game.service_game_id, version.service_version_id)
+        except GenerationApiError as exc:
+            if exc.code != "conflict" or version.id == game.current_version_id:
+                if wants_json:
+                    return JsonResponse({"error": str(exc), "code": exc.code}, status=409)
+                messages.error(request, _t(request)["service_error"])
+                return redirect(f"/studio/{game.id}")
+
+    game.current_version = version
+    game.save(update_fields=["current_version", "updated_at"])
+    if wants_json:
+        return JsonResponse({
+            "version_id": str(version.id),
+            "version_no": version.version_no,
+            "play_url": version.play_url,
+        })
+    return redirect(f"/studio/{game.id}")
 
 
 # ---------------------------------------------------------------------------

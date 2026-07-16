@@ -147,6 +147,9 @@ class GenerationJobRef(models.Model):
     prompt = models.TextField(blank=True)
     error_code = models.CharField(max_length=64, blank=True)
     error_message = models.CharField(max_length=280, blank=True)
+    # Clarifying questions the engine paused on (mirrored verbatim so the
+    # workspace can render them without another engine round-trip).
+    questions = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
