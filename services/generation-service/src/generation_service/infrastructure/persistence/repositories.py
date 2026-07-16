@@ -308,17 +308,24 @@ class SqliteJobRepository:
 
     async def mark_awaiting_input(
         self, job_id: str, questions: list[ClarifyQuestion], analysis_json: str
-    ) -> None:
-        await self._touch(
-            job_id,
-            "status = ?, stage = ?, questions_json = ?, analysis_json = ?",
+    ) -> bool:
+        """CAS RUNNING -> AWAITING_INPUT. False means the job went terminal
+        (a creator cancel) while intake ran — the pause must be abandoned,
+        never resurrect a cancelled job as answerable."""
+        rows = await self._db.execute_write(
+            "UPDATE generation_jobs SET status = ?, stage = ?, questions_json = ?, "
+            "analysis_json = ?, updated_at = ? WHERE id = ? AND status = ?",
             (
                 JobStatus.AWAITING_INPUT.value,
                 PipelineStage.CLARIFYING.value,
                 json.dumps([q.model_dump() for q in questions]),
                 analysis_json,
+                _iso(utcnow()),
+                job_id,
+                JobStatus.RUNNING.value,
             ),
         )
+        return rows > 0
 
     async def set_answers(self, job_id: str, answers: dict[str, str]) -> bool:
         """Compare-and-set: answers only land on a job still awaiting them.

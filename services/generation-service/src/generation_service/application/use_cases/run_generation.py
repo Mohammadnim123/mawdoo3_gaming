@@ -130,13 +130,13 @@ class RunGenerationUseCase:
         if job.kind == JobKind.TWEAK:
             base_game = await self._games.get(job.game_id or "")
             if base_game is None:
-                await self._jobs.mark_failed(
+                await self._fail_unless_terminal(
                     job.id,
+                    emitter,
                     FailureCode.GAME_NOT_FOUND,
                     f"game {job.game_id!r} no longer exists",
+                    "That game no longer exists.",
                 )
-                await self._emit_failed(emitter, FailureCode.GAME_NOT_FOUND,
-                                        "That game no longer exists.")
                 return
             version_no = await self._versions.max_version_no(base_game.id) + 1
             state = tweak_state(
@@ -256,11 +256,15 @@ class RunGenerationUseCase:
         self, job: GenerationJob, accumulated: GenerationState, emitter: JobEventEmitter
     ) -> None:
         """Park the job on its clarifying questions. Everything a resume needs
-        is persisted (questions + analysis); the task ends here."""
+        is persisted (questions + analysis); the task ends here. The CAS
+        (RUNNING -> AWAITING_INPUT) loses to a creator cancel that landed
+        during intake — a cancelled job must never come back as answerable."""
         questions = accumulated.get("questions") or []
         analysis = accumulated.get("analysis")
         analysis_json = analysis.model_dump_json() if analysis is not None else "{}"
-        await self._jobs.mark_awaiting_input(job.id, questions, analysis_json)
+        if not await self._jobs.mark_awaiting_input(job.id, questions, analysis_json):
+            logger.info("job %s went terminal during intake; abandoning the pause", job.id)
+            return
         await self._emit_safe(emitter, "questions", {
             "questions": [q.model_dump() for q in questions],
         })

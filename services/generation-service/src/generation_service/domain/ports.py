@@ -75,7 +75,10 @@ class JobRepository(Protocol):
 
     async def mark_awaiting_input(
         self, job_id: str, questions: list[ClarifyQuestion], analysis_json: str
-    ) -> None: ...
+    ) -> bool:
+        """CAS RUNNING -> AWAITING_INPUT; False = the job went terminal,
+        abandon the pause."""
+        ...
 
     async def set_answers(self, job_id: str, answers: dict[str, str]) -> bool:
         """CAS: persist answers + QUEUED only if still AWAITING_INPUT; False

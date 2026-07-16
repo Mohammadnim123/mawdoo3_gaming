@@ -123,7 +123,8 @@ def test_set_answers_cas_single_winner(tmp_path):
         jobs = SqliteJobRepository(db)
         job = GenerationJob.create(prompt="a jungle game", requested_locale=None)
         await jobs.add(job)
-        await jobs.mark_awaiting_input(job.id, [QUESTION], "{}")
+        assert await jobs.mark_running(job.id)
+        assert await jobs.mark_awaiting_input(job.id, [QUESTION], "{}")
 
         first = await jobs.set_answers(job.id, {"q_1": "opt_2"})
         second = await jobs.set_answers(job.id, {"q_1": "opt_1"})
@@ -170,6 +171,35 @@ def test_emitter_seq_collision_skips_forward(tmp_path):
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
 
 
+def test_pause_cas_loses_to_cancel(tmp_path):
+    """A cancel landing while intake runs must win: the pause CAS fails and
+    the cancelled job never resurfaces as answerable."""
+
+    async def scenario() -> tuple[bool, str]:
+        from generation_service.infrastructure.persistence import (
+            Database,
+            SqliteJobRepository,
+        )
+
+        db = Database(tmp_path / "pausecas.db")
+        await db.connect()
+        jobs = SqliteJobRepository(db)
+        job = GenerationJob.create(prompt="a jungle game", requested_locale=None)
+        await jobs.add(job)
+        assert await jobs.mark_running(job.id)
+        await jobs.mark_failed(job.id, "cancelled", "cancelled by the creator")
+
+        paused = await jobs.mark_awaiting_input(job.id, [QUESTION], "{}")
+        refreshed = await jobs.get(job.id)
+        await db.close()
+        assert refreshed is not None
+        return paused, refreshed.status.value
+
+    paused, status = asyncio.run(scenario())
+    assert paused is False
+    assert status == "failed"
+
+
 def test_expire_stale_awaiting(tmp_path):
     """Old AWAITING_INPUT jobs are reaped; fresh ones are untouched."""
 
@@ -186,8 +216,9 @@ def test_expire_stale_awaiting(tmp_path):
         fresh = GenerationJob.create(prompt="a new paused game", requested_locale=None)
         await jobs.add(stale)
         await jobs.add(fresh)
-        await jobs.mark_awaiting_input(stale.id, [QUESTION], "{}")
-        await jobs.mark_awaiting_input(fresh.id, [QUESTION], "{}")
+        for j in (stale, fresh):
+            assert await jobs.mark_running(j.id)
+            assert await jobs.mark_awaiting_input(j.id, [QUESTION], "{}")
         await db.execute_write(
             "UPDATE generation_jobs SET updated_at = '2020-01-01T00:00:00+00:00' "
             "WHERE id = ?",

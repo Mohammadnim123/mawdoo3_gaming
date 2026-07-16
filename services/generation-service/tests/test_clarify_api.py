@@ -188,7 +188,8 @@ def test_awaiting_jobs_survive_restart_semantics(tmp_path, monkeypatch):
         running = GenerationJob.create(prompt="running prompt", requested_locale=None)
         await jobs.add(paused)
         await jobs.add(running)
-        await jobs.mark_awaiting_input(paused.id, [QUESTION], "{}")
+        assert await jobs.mark_running(paused.id)
+        assert await jobs.mark_awaiting_input(paused.id, [QUESTION], "{}")
         await jobs.set_status(running.id, JobStatus.RUNNING)
 
         await jobs.fail_abandoned("interrupted", "restart")
