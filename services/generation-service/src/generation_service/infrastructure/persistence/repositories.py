@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from generation_service.domain.blueprint import GameBlueprint
+from generation_service.domain.events import JobEvent
 from generation_service.domain.entities import (
     Game,
     GameSummary,
@@ -297,5 +299,31 @@ class SqliteLlmCallLog:
                 output_tokens=row["output_tokens"],
                 total_tokens=row["total_tokens"],
             )
+            for row in rows
+        ]
+
+
+class SqliteJobEventStore:
+    """Persisted, replayable job-event log backing SSE reconnection."""
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def append(self, job_id: str, event: JobEvent) -> None:
+        await self._db.execute_write(
+            "INSERT OR IGNORE INTO job_events (job_id, seq, event, data_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (job_id, event.seq, event.event, json.dumps(event.data), _iso(utcnow())),
+        )
+
+    async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]:
+        cursor = await self._db.connection.execute(
+            "SELECT seq, event, data_json FROM job_events WHERE job_id = ? AND seq > ? "
+            "ORDER BY seq",
+            (job_id, after_seq),
+        )
+        rows = await cursor.fetchall()
+        return [
+            JobEvent(seq=row["seq"], event=row["event"], data=json.loads(row["data_json"]))
             for row in rows
         ]

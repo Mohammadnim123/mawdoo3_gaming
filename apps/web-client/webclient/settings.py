@@ -1,9 +1,14 @@
-"""Django settings — a UI-only client.
+"""Django settings for the Codply web application.
 
-No database, no ORM models, no auth: all state (games, jobs, bundles) lives
-in the generation service; this client renders pages and forwards user
-actions to the service's REST API. Sessions are unnecessary — the language
-preference travels in a plain cookie set by the views.
+This is the user-facing web tier of the platform: it owns accounts, the game
+product catalog, the social graph, credits/billing and the CMS, server-renders
+most of the UX (with React islands for the live workspace and player), and is
+the sole caller of the FastAPI generation-service (the generation engine, kept
+as the source of truth).
+
+DB: SQLite by default for local dev; set POSTGRES_DB (or DATABASE_URL) to run on
+Postgres. Models are written to be Postgres-compatible; a few Postgres-only
+niceties (pg_trgm search) are guarded at the query layer.
 """
 
 from __future__ import annotations
@@ -35,9 +40,9 @@ def _env_bool(name: str, default: bool) -> bool:
 
 _load_env_file(BASE_DIR / ".env")
 
-# Secure by default: DEBUG must be opted into (the committed .env.example
-# enables it for local dev), and a non-debug process refuses to start with a
-# missing/known SECRET_KEY instead of silently signing cookies with it.
+# --------------------------------------------------------------------------
+# Core security
+# --------------------------------------------------------------------------
 DEBUG = _env_bool("DJANGO_DEBUG", False)
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
@@ -46,25 +51,47 @@ if not SECRET_KEY:
     else:
         from django.core.exceptions import ImproperlyConfigured
 
-        raise ImproperlyConfigured(
-            "DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false"
-        )
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false")
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
     if host.strip()
 ]
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
+# --------------------------------------------------------------------------
+# Applications
+# --------------------------------------------------------------------------
 INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Platform apps
+    "core",
+    "accounts",
     "games",
+    "social",
+    "billing",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Resolves the active locale (fp_locale cookie) → request.locale / request.text_dir.
+    "core.middleware.LocaleMiddleware",
 ]
 
 ROOT_URLCONF = "webclient.urls"
@@ -72,52 +99,134 @@ ROOT_URLCONF = "webclient.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+                # Injects locale/dir/i18n strings + nav state (unread count, etc.).
+                "core.context_processors.chrome",
             ],
         },
     },
 ]
 
 WSGI_APPLICATION = "webclient.wsgi.application"
+ASGI_APPLICATION = "webclient.asgi.application"
 
-# UI-only client: deliberately no database. All state lives in the service.
-DATABASES: dict = {}
+# --------------------------------------------------------------------------
+# Database — SQLite dev default; Postgres when POSTGRES_DB / DATABASE_URL is set
+# --------------------------------------------------------------------------
+if os.environ.get("POSTGRES_DB"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ["POSTGRES_DB"],
+            "USER": os.environ.get("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+            "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+            "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+            "CONN_MAX_AGE": 60,
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "var" / "codply.sqlite3",
+        }
+    }
 
-# Per-request ar/en handling is done by the views (see games.i18n), not by
-# Django's locale machinery — the product needs exactly two locales and
-# bilingual data comes pre-localized from the API.
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --------------------------------------------------------------------------
+# Auth
+# --------------------------------------------------------------------------
+AUTH_USER_MODEL = "accounts.User"
+AUTHENTICATION_BACKENDS = ["accounts.backends.EmailBackend"]
+LOGIN_URL = "/login"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+     "OPTIONS": {"min_length": 8}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+]
+
+SESSION_COOKIE_NAME = "codply_session"
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # 30 days
+
+# --------------------------------------------------------------------------
+# i18n / l10n — exactly two locales (EN + AR/RTL), resolved from a cookie.
+# --------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_TZ = True
+USE_I18N = False  # custom two-locale system (core.i18n), not Django's gettext
+WEB_DEFAULT_LOCALE = os.environ.get("WEB_DEFAULT_LOCALE", "ar")
+LOCALE_COOKIE_NAME = "fp_locale"
+THEME_COOKIE_NAME = "fp_theme"
 
+# --------------------------------------------------------------------------
+# Static files
+# --------------------------------------------------------------------------
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
 
-# ---------------------------------------------------------------------------
-# Generation service integration (this client's ONLY backend)
-# ---------------------------------------------------------------------------
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "var" / "media"
+
+# --------------------------------------------------------------------------
+# Email (magic links, verification, password reset) — console backend in dev.
+# --------------------------------------------------------------------------
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Codply <noreply@codply.local>")
+
+# --------------------------------------------------------------------------
+# Branding
+# --------------------------------------------------------------------------
+SITE_NAME = "Codply"
+SITE_TAGLINE_EN = "Type it. Play it."
+SITE_TAGLINE_AR = "اكتبها. العبها."
+
+# --------------------------------------------------------------------------
+# Generation service integration (the generation engine — source of truth)
+# --------------------------------------------------------------------------
 GENERATION_API_URL = os.environ.get("GENERATION_API_URL", "http://localhost:8000")
 GENERATION_API_TIMEOUT_SECONDS = float(os.environ.get("GENERATION_API_TIMEOUT_SECONDS", "15"))
+# Shared secret authenticating the Django -> generation-service channel.
+GENERATION_SERVICE_TOKEN = os.environ.get("GENERATION_SERVICE_TOKEN", "")
+# Where generated games are played from (foreign origin CDN); used to derive the
+# iframe origin for postMessage validation.
+GAMES_CDN_BASE_URL = os.environ.get("GAMES_CDN_BASE_URL", "http://localhost:8002")
 
-# ---------------------------------------------------------------------------
-# Prompt validation LLM — the one AI call this client owns: before dispatch,
-# verify the prompt is actually a game and deliverable mini-game complexity.
-# Both providers run on the Anthropic SDK (openrouter = Anthropic-compatible
-# endpoint; model ids differ per dialect: 'anthropic/claude-haiku-4.5' vs
-# 'claude-haiku-4-5').
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Prompt validation LLM — the one AI call this tier owns (is-it-a-game check).
+# --------------------------------------------------------------------------
 VALIDATION_AI_PROVIDER = os.environ.get("VALIDATION_AI_PROVIDER", "openrouter")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 VALIDATION_MODEL = os.environ.get("VALIDATION_MODEL", "anthropic/claude-haiku-4.5")
 VALIDATION_TIMEOUT_SECONDS = float(os.environ.get("VALIDATION_TIMEOUT_SECONDS", "30"))
-WEB_DEFAULT_LOCALE = os.environ.get("WEB_DEFAULT_LOCALE", "ar")
-GAMES_PAGE_SIZE = int(os.environ.get("GAMES_PAGE_SIZE", "100"))
-# Generation-progress polling cadence (JS poller and the noscript refresh).
+
+# --------------------------------------------------------------------------
+# Product knobs
+# --------------------------------------------------------------------------
+GAMES_PAGE_SIZE = int(os.environ.get("GAMES_PAGE_SIZE", "24"))
 STATUS_POLL_INTERVAL_MS = int(os.environ.get("STATUS_POLL_INTERVAL_MS", "3000"))
+DEFAULT_DAILY_GEN_QUOTA = int(os.environ.get("DEFAULT_DAILY_GEN_QUOTA", "10"))
+INITIAL_FREE_CREDITS_CENTS = int(os.environ.get("INITIAL_FREE_CREDITS_CENTS", "500"))

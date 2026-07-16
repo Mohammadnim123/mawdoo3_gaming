@@ -59,6 +59,10 @@ class GenerationPipeline:
                 return  # out of scope — terminal
             yield "blueprint", await run("blueprint", self._nodes.design_blueprint)
 
+        # Optional painted backdrop (create: paint from the blueprint's brief;
+        # tweak: carry the existing painting over). Never blocks the pipeline.
+        yield "paint_background", await run("paint_background", self._nodes.paint_background)
+
         # Code → gate loop with capped retries; the gate report feeds back
         # into the next attempt as actionable failure feedback. When retries
         # run out, salvage publishes the best shippable attempt (advisory

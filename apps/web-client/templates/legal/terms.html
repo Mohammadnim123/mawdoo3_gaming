@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Terms · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-10{% endblock %}
+{% block content %}
+<article class="grid gap-4 text-ink-secondary">
+  <h1 class="fp-title-page text-ink">Terms of Service</h1>
+  <p>By using {{ site_name }} you agree to these terms. Create responsibly and respect other creators.</p>
+  <h2 class="fp-title-section text-ink">Your content</h2>
+  <p>You own the games you create. By posting publicly you allow others to play and remix them on the platform. Remixes credit their source.</p>
+  <h2 class="fp-title-section text-ink">Acceptable use</h2>
+  <p>No illegal, harmful, or infringing content. Generated games run sandboxed and may not make network calls or access your data.</p>
+  <h2 class="fp-title-section text-ink">Availability</h2>
+  <p>The service is provided as-is during beta, with per-day generation limits that vary by plan.</p>
+  <p class="text-sm text-ink-muted">This is a product agreement for the platform, not legal advice.</p>
+</article>
+{% endblock %}

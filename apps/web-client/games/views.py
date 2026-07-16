@@ -1,290 +1,302 @@
-"""UI views — presentation and user interaction only.
+"""Codply web views: landing/feed, create, live workspace, game page, edit.
 
-Every generation action delegates to the generation service through the API
-client (games.services.generation_api); no generation or storage logic lives
-here. The one AI call this app owns is the pre-dispatch prompt validation
-(games.services.prompt_validation). Pages are server-rendered; the only
-JavaScript is progressive enhancement (status polling, game postMessage
-events), so the whole flow also works without it.
+Django owns the product layer (accounts, catalog, social); the generation
+engine (FastAPI) remains the source of truth for how a game is built and
+served. This module renders the UX and orchestrates engine calls through the
+API client; the live generation panel consumes the engine's SSE stream via a
+same-origin proxy here.
 """
 
 from __future__ import annotations
 
+import uuid
 from urllib.parse import urlsplit
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.db.models import F
+from django.http import Http404, JsonResponse, StreamingHttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
-from games import i18n
-from games.constants import PROMPT_MAX_CHARS, PROMPT_MIN_CHARS, JobStatus
-from games.services.generation_api import (
-    GenerationApiError,
-    GenerationApiUnavailable,
-    get_client,
+from core.i18n import stage_label, strings
+
+from games.constants import PROMPT_MAX_CHARS, PROMPT_MIN_CHARS
+from games.models import (
+    Game,
+    GameStatus,
+    GenerationJobRef,
+    JobStatus,
+    JobType,
+    Visibility,
 )
-from games.services.prompt_validation import (
-    PromptValidationUnavailable,
-    validate_prompt,
-)
+from games.services.generation_api import GenerationApiError, get_client
+from games.services.prompt_validation import PromptValidationUnavailable, validate_prompt
+from games.sync import sync_job
 
-_LANG_COOKIE = "lang"
-_LANG_COOKIE_MAX_AGE = 365 * 24 * 3600
+_ACTIVE = {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.AWAITING_INPUT}
 
 
-# ---------------------------------------------------------------------------
-# Language + rendering helpers
-# ---------------------------------------------------------------------------
+def _t(request):
+    return strings(getattr(request, "locale", "en"))
 
 
-def _lang(request: HttpRequest) -> str:
-    candidate = (
-        request.GET.get("lang")
-        or request.POST.get("lang")
-        or request.COOKIES.get(_LANG_COOKIE)
-    )
-    return candidate if candidate in ("ar", "en") else settings.WEB_DEFAULT_LOCALE
+def _locale(request) -> str:
+    return getattr(request, "locale", "en")
 
 
-def _render(
-    request: HttpRequest, template: str, context: dict, *, status: int = 200
-) -> HttpResponse:
-    lang = _lang(request)
-    other = "en" if lang == "ar" else "ar"
-    # POST re-renders must not offer the POST-only URL as a toggle target.
-    toggle_path = context.pop(
-        "toggle_path", request.path if request.method == "GET" else reverse("games:home")
-    )
-    context.update(
-        {
-            "lang": lang,
-            "dir": "rtl" if lang == "ar" else "ltr",
-            "toggle_url": f"{toggle_path}?lang={other}",
-            "t": i18n.strings(lang),
-        }
-    )
-    response = render(request, template, context, status=status)
-    if request.GET.get("lang") == lang:
-        response.set_cookie(
-            _LANG_COOKIE, lang, max_age=_LANG_COOKIE_MAX_AGE, samesite="Lax"
-        )
-    return response
+def _game_src(game: Game, locale: str) -> str:
+    url = game.play_url
+    if not url:
+        return ""
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}lang={locale}"
 
 
-def _redirect(request: HttpRequest, viewname: str, *args: str) -> HttpResponse:
-    return redirect(f"{reverse(viewname, args=args)}?lang={_lang(request)}")
+def _game_origin(game: Game) -> str:
+    parts = urlsplit(game.play_url)
+    return f"{parts.scheme}://{parts.netloc}" if parts.scheme else ""
 
 
-def _error_page(request: HttpRequest, message: str, *, status: int) -> HttpResponse:
-    t = i18n.strings(_lang(request))
-    return _render(
-        request,
-        "games/error.html",
-        {"error_title": t["error_title"], "error_message": message, "toggle_path": "/"},
-        status=status,
-    )
-
-
-# Failure codes whose message is written for the creator (the out-of-scope
-# reason comes from the LLM, language-matched and explanatory). Every other
-# code carries technical detail (gate feedback, tracebacks, timeouts) that
-# must never reach the page — those render as a friendly localized message.
-_USER_SAFE_ERROR_CODES = frozenset({"out_of_scope"})
-
-
-def _job_error_message(job: dict, t: dict) -> str | None:
-    error = job.get("error")
-    if not error:
-        return None
-    if error.get("code") in _USER_SAFE_ERROR_CODES and error.get("message"):
-        return error["message"]
-    return t["gen_failed_message"]
-
-
-def _game_src(game: dict, lang: str) -> str:
-    """Play URL carrying the UI language. No cache-buster: the play origins
-    serve with no-cache + revalidation, so a finished edit is picked up on
-    the next load while unchanged files stay cheap 304s."""
-    sep = "&" if "?" in game["play_url"] else "?"
-    return f"{game['play_url']}{sep}lang={lang}"
-
-
-def _game_origin(game: dict) -> str:
-    """Origin the sandboxed game iframe runs on — play.js only accepts
-    postMessage events from exactly this origin."""
-    parts = urlsplit(game["play_url"])
-    return f"{parts.scheme}://{parts.netloc}"
+def _draft_slug() -> str:
+    return f"draft-{uuid.uuid4().hex[:12]}"
 
 
 # ---------------------------------------------------------------------------
-# Home: prompt input + list of generated games
+# Landing + feed
 # ---------------------------------------------------------------------------
-
-
 @require_GET
-def home(request: HttpRequest) -> HttpResponse:
-    return _home(request)
+def home(request):
+    sort = request.GET.get("sort", "new")
+    qs = Game.objects.filter(
+        status=GameStatus.LIVE, visibility=Visibility.PUBLIC
+    ).select_related("owner")
+    if sort == "following" and request.user.is_authenticated:
+        following_ids = list(request.user.following_set.values_list("following_id", flat=True))
+        qs = qs.filter(owner_id__in=following_ids).order_by("-published_at", "-created_at")
+    elif sort == "trending":
+        qs = qs.order_by("-play_count", "-like_count", "-published_at")
+    else:
+        sort = "new"
+        qs = qs.order_by("-published_at", "-created_at")
+    return render(request, "pages/home.html", {
+        "games": list(qs[: settings.GAMES_PAGE_SIZE]),
+        "sort": sort,
+    })
 
 
-def _home(
-    request: HttpRequest,
-    *,
-    gen_error: str | None = None,
-    prompt_rejected: str | None = None,
-    status: int = 200,
-) -> HttpResponse:
-    games: list[dict] = []
-    load_error: str | None = None
-    try:
-        page = get_client().list_games(limit=settings.GAMES_PAGE_SIZE)
-        games = page.get("items", [])
-    except GenerationApiError as exc:
-        load_error = str(exc)
-    return _render(
-        request,
-        "games/home.html",
-        {
-            "games": games,
-            "load_error": load_error,
-            "gen_error": gen_error,
-            "prompt_rejected": prompt_rejected,
-            "toggle_path": reverse("games:home"),
-        },
-        status=status,
-    )
+# ---------------------------------------------------------------------------
+# Create
+# ---------------------------------------------------------------------------
+@login_required(login_url="/login")
+def create(request):
+    if request.method == "POST":
+        return _start_create(request)
+    return render(request, "pages/create.html", {"idea": (request.GET.get("idea") or "").strip()})
 
 
-@require_POST
-def generate(request: HttpRequest) -> HttpResponse:
-    prompt = (request.POST.get("prompt") or "").strip()
-    if not prompt:
-        return _redirect(request, "games:home")
-    t = i18n.strings(_lang(request))
+def _start_create(request):
+    t = _t(request)
+    from billing.services import can_generate
 
-    # Pre-dispatch LLM validation, owned by this app: is it a game, and is it
-    # deliverable mini-game complexity? Invalid prompts never become jobs —
-    # the user gets the (language-matched) reason immediately. Length is
-    # checked first so an over/under-sized prompt costs no LLM call; the
-    # service still enforces the same limits at dispatch.
+    if not can_generate(request.user):
+        messages.error(request, "You've hit today's generation limit — upgrade for more.")
+        return redirect("/account/billing")
+    prompt = (request.POST.get("prompt") or request.POST.get("idea") or "").strip()
     if len(prompt) < PROMPT_MIN_CHARS:
-        return _home(request, prompt_rejected=t["prompt_too_short"])
+        messages.error(request, t["prompt_too_short"])
+        return render(request, "pages/create.html", {"idea": prompt})
     if len(prompt) > PROMPT_MAX_CHARS:
-        return _home(request, prompt_rejected=t["prompt_too_long"])
+        messages.error(request, t["prompt_too_long"])
+        return render(request, "pages/create.html", {"idea": prompt[:PROMPT_MAX_CHARS]})
     try:
         verdict = validate_prompt(prompt)
     except PromptValidationUnavailable:
-        return _home(request, gen_error=t["validation_unavailable"], status=502)
+        messages.error(request, t["validation_unavailable"])
+        return render(request, "pages/create.html", {"idea": prompt})
     if not verdict.valid:
-        return _home(request, prompt_rejected=verdict.reason or t["invalid_prompt"])
+        messages.error(request, verdict.reason or t["invalid_prompt"])
+        return render(request, "pages/create.html", {"idea": prompt})
 
+    locale = _locale(request)
     try:
-        job = get_client().start_generation(prompt)
-    except GenerationApiError as exc:
-        return _home(request, gen_error=str(exc), status=exc.status_code or 502)
-    return _redirect(request, "games:generation_status", job["id"])
+        job = get_client().start_generation(prompt, locale=locale)
+    except GenerationApiError:
+        messages.error(request, t["service_error"])
+        return render(request, "pages/create.html", {"idea": prompt})
 
-
-# ---------------------------------------------------------------------------
-# Generation progress (shared by first generation and edits)
-# ---------------------------------------------------------------------------
-
-
-@require_GET
-def generation_status(request: HttpRequest, job_id: str) -> HttpResponse:
-    lang = _lang(request)
-    try:
-        job = get_client().get_generation(job_id)
-    except GenerationApiError as exc:
-        return _error_page(request, str(exc), status=exc.status_code or 502)
-
-    if job["status"] == JobStatus.SUCCEEDED and job.get("game_id"):
-        return _redirect(request, "games:play", job["game_id"])
-
-    return _render(
-        request,
-        "games/status.html",
-        {
-            "job": job,
-            "state": "failed" if job["status"] == JobStatus.FAILED else "running",
-            "error_message": _job_error_message(job, i18n.strings(lang)),
-            "stage_label": i18n.stage_label(lang, job.get("stage", "")),
-            "poll_interval_ms": settings.STATUS_POLL_INTERVAL_MS,
-            "refresh_seconds": max(1, settings.STATUS_POLL_INTERVAL_MS // 1000),
-        },
+    game = Game.objects.create(
+        owner=request.user, prompt=prompt, status=GameStatus.DRAFT,
+        slug=_draft_slug(), default_locale=locale, visibility=Visibility.PRIVATE,
     )
+    GenerationJobRef.objects.create(
+        service_job_id=job["id"], user=request.user, game=game,
+        type=JobType.CREATE, prompt=prompt, status=JobStatus.QUEUED,
+        stage=job.get("stage", ""),
+    )
+    return redirect(f"/studio/{game.id}")
 
 
+# ---------------------------------------------------------------------------
+# Studio (workspace)
+# ---------------------------------------------------------------------------
+@login_required(login_url="/login")
+def studio(request, game_id):
+    game = get_object_or_404(Game, id=game_id, owner=request.user)
+    job = game.jobs.order_by("-created_at").first()
+    if job is not None and (job.status in _ACTIVE or not game.is_live):
+        job = sync_job(job)
+        game.refresh_from_db()
+    active = job is not None and job.status in _ACTIVE
+    locale = _locale(request)
+    return render(request, "workspace/studio.html", {
+        "game": game,
+        "job": job,
+        "active": active,
+        "versions": list(game.versions.order_by("-version_no")),
+        "game_src": _game_src(game, locale) if game.is_live else "",
+        "game_origin": _game_origin(game) if game.is_live else "",
+    })
+
+
+@login_required(login_url="/login")
 @require_GET
-def generation_status_data(request: HttpRequest, job_id: str) -> JsonResponse:
-    """Polling endpoint for the status page's progressive enhancement."""
-    lang = _lang(request)
-    try:
-        job = get_client().get_generation(job_id)
-    except GenerationApiError as exc:
-        return JsonResponse(
-            {"status": "error", "message": str(exc)}, status=exc.status_code or 502
-        )
-    payload: dict = {
-        "status": job["status"],
-        "stage": job.get("stage"),
-        "stage_label": i18n.stage_label(lang, job.get("stage", "")),
-        "error": _job_error_message(job, i18n.strings(lang)),
+def stream_proxy(request, job_ref_id):
+    jr = get_object_or_404(GenerationJobRef, id=job_ref_id, user=request.user)
+    last = request.headers.get("Last-Event-ID")
+
+    def gen():
+        try:
+            yield from get_client().iter_stream(jr.service_job_id, last)
+        except GenerationApiError:
+            yield b'event: failed\ndata: {"error_user_msg": "stream unavailable"}\n\n'
+
+    resp = StreamingHttpResponse(gen(), content_type="text/event-stream")
+    resp["Cache-Control"] = "no-cache"
+    resp["X-Accel-Buffering"] = "no"
+    return resp
+
+
+@login_required(login_url="/login")
+@require_GET
+def job_status(request, job_ref_id):
+    jr = get_object_or_404(GenerationJobRef, id=job_ref_id, user=request.user)
+    jr = sync_job(jr)
+    payload = {
+        "status": jr.status,
+        "stage": jr.stage,
+        "stage_label": stage_label(_locale(request), jr.stage or ""),
+        "error": jr.error_message or None,
     }
-    if job["status"] == JobStatus.SUCCEEDED and job.get("game_id"):
-        payload["redirect_url"] = (
-            f"{reverse('games:play', args=[job['game_id']])}?lang={lang}"
-        )
+    if jr.status == JobStatus.SUCCEEDED and jr.game_id:
+        payload["redirect_url"] = f"/studio/{jr.game_id}"
+        payload["game_id"] = str(jr.game_id)
     return JsonResponse(payload)
 
 
 # ---------------------------------------------------------------------------
-# Play + edit
+# Public game page
 # ---------------------------------------------------------------------------
-
-
-def _render_play(
-    request: HttpRequest,
-    game_id: str,
-    *,
-    edit_error: GenerationApiError | None = None,
-) -> HttpResponse:
-    """The one place the play page is rendered — with or without a failed-edit
-    banner, the context is built identically."""
-    lang = _lang(request)
-    try:
-        game = get_client().get_game(game_id)
-    except GenerationApiError as exc:
-        original = edit_error or exc
-        return _error_page(request, str(original), status=original.status_code or 502)
-    context: dict = {
-        "game": game,
-        "game_src": _game_src(game, lang),
-        "game_origin": _game_origin(game),
-    }
-    status = 200
-    if edit_error is not None:
-        context["edit_error"] = str(edit_error)
-        context["toggle_path"] = reverse("games:play", args=[game_id])
-        status = edit_error.status_code or 502
-    return _render(request, "games/play.html", context, status=status)
-
-
 @require_GET
-def play(request: HttpRequest, game_id: str) -> HttpResponse:
-    return _render_play(request, game_id)
+def game_detail(request, slug):
+    game = get_object_or_404(Game.objects.select_related("owner"), slug=slug)
+    is_owner = request.user.is_authenticated and game.owner_id == request.user.id
+    if game.status == GameStatus.REMOVED:
+        raise Http404
+    if game.visibility == Visibility.PRIVATE and not is_owner:
+        raise Http404
+    if not game.is_live and not is_owner:
+        raise Http404
+    locale = _locale(request)
+
+    from social.models import Comment, Like, Save
+
+    viewer_liked = viewer_saved = viewer_following = False
+    if request.user.is_authenticated:
+        viewer_liked = Like.objects.filter(user=request.user, game=game).exists()
+        viewer_saved = Save.objects.filter(user=request.user, game=game).exists()
+        viewer_following = request.user.following_set.filter(following=game.owner).exists()
+    comments = list(
+        Comment.objects.filter(game=game, parent__isnull=True)
+        .select_related("user").order_by("-created_at")[:50]
+    )
+    return render(request, "game/detail.html", {
+        "game": game,
+        "is_owner": is_owner,
+        "viewer_liked": viewer_liked,
+        "viewer_saved": viewer_saved,
+        "viewer_following": viewer_following,
+        "comments": comments,
+        "game_src": _game_src(game, locale) if game.is_live else "",
+        "game_origin": _game_origin(game) if game.is_live else "",
+    })
 
 
+# ---------------------------------------------------------------------------
+# Publish / edit / remix
+# ---------------------------------------------------------------------------
+@login_required(login_url="/login")
 @require_POST
-def edit(request: HttpRequest, game_id: str) -> HttpResponse:
+def game_post(request, game_id):
+    game = get_object_or_404(Game, id=game_id, owner=request.user)
+    vis = request.POST.get("visibility", Visibility.PUBLIC)
+    if vis not in Visibility.values:
+        vis = Visibility.PUBLIC
+    game.visibility = vis
+    game.save(update_fields=["visibility"])
+    messages.success(request, _t(request)["ws_post"])
+    return redirect(f"/g/{game.slug}" if game.is_live else f"/studio/{game.id}")
+
+
+@login_required(login_url="/login")
+@require_POST
+def game_chat(request, game_id):
+    game = get_object_or_404(Game, id=game_id, owner=request.user)
     instruction = (request.POST.get("instruction") or "").strip()
-    if not instruction:
-        return _redirect(request, "games:play", game_id)
+    if not instruction or not game.service_game_id:
+        return redirect(f"/studio/{game.id}")
     try:
-        job = get_client().start_tweak(game_id, instruction)
-    except GenerationApiUnavailable as exc:
-        return _error_page(request, str(exc), status=502)
-    except GenerationApiError as exc:
-        return _render_play(request, game_id, edit_error=exc)
-    return _redirect(request, "games:generation_status", job["id"])
+        job = get_client().start_tweak(game.service_game_id, instruction)
+    except GenerationApiError:
+        messages.error(request, _t(request)["service_error"])
+        return redirect(f"/studio/{game.id}")
+    GenerationJobRef.objects.create(
+        service_job_id=job["id"], user=request.user, game=game,
+        type=JobType.EDIT, prompt=instruction, status=JobStatus.QUEUED,
+    )
+    return redirect(f"/studio/{game.id}")
+
+
+@login_required(login_url="/login")
+@require_POST
+def game_remix(request, game_id):
+    from billing.services import can_generate
+
+    src = get_object_or_404(Game, id=game_id)
+    if src.visibility == Visibility.PRIVATE and src.owner_id != request.user.id:
+        raise Http404
+    if not can_generate(request.user):
+        messages.error(request, "You've hit today's generation limit — upgrade for more.")
+        return redirect("/account/billing")
+    message = (request.POST.get("message") or "").strip()
+    prompt = src.prompt or src.title_en or "a fun game"
+    if message:
+        prompt = f"{prompt}. {message}"
+    locale = _locale(request)
+    try:
+        job = get_client().start_generation(prompt, locale=locale)
+    except GenerationApiError:
+        messages.error(request, _t(request)["service_error"])
+        return redirect(f"/g/{src.slug}")
+    game = Game.objects.create(
+        owner=request.user, prompt=prompt, status=GameStatus.DRAFT,
+        slug=_draft_slug(), default_locale=locale, visibility=Visibility.PRIVATE,
+        remixed_from=src,
+    )
+    GenerationJobRef.objects.create(
+        service_job_id=job["id"], user=request.user, game=game,
+        type=JobType.REMIX, prompt=prompt, status=JobStatus.QUEUED,
+    )
+    Game.objects.filter(id=src.id).update(remix_count=F("remix_count") + 1)
+    return redirect(f"/studio/{game.id}")

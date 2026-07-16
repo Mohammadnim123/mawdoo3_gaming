@@ -29,6 +29,8 @@ class GenerationState(TypedDict, total=False):
     # Stage artifacts
     analysis: PromptAnalysis
     blueprint: GameBlueprint
+    background_art: bytes | None  # painted bg.png (None → procedural backdrop)
+    sprites: dict[str, bytes]  # painted transparent sprites {file_name: png}
     code: GeneratedGameCode
     gate_report: GateReport
     bundle_files: dict[str, bytes]

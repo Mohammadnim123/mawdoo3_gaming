@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ profile_user.display_name }} (@{{ profile_user.handle }}) · {{ site_name }}{% endblock %}
+{% block content %}
+<div class="mb-8 flex flex-col items-center gap-3 text-center">
+  <span class="grid h-20 w-20 place-items-center rounded-full text-3xl font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{{ profile_user.display_name|first|upper|default:"U" }}</span>
+  <div>
+    <h1 class="fp-title-page text-ink">{{ profile_user.display_name }}</h1>
+    <p class="text-sm text-ink-muted">@{{ profile_user.handle }}</p>
+  </div>
+  {% if profile_user.bio %}<p class="max-w-md text-sm text-ink-secondary">{{ profile_user.bio }}</p>{% endif %}
+  <div class="flex items-center gap-5 text-sm text-ink-secondary">
+    <span><b class="text-ink">{{ games|length }}</b> games</span>
+    <span><b class="text-ink">{{ profile_user.follower_count }}</b> followers</span>
+    <span><b class="text-ink">{{ profile_user.following_count }}</b> following</span>
+  </div>
+  {% if user.is_authenticated and user != profile_user %}
+    <form method="post" action="/users/{{ profile_user.handle }}/follow">{% csrf_token %}
+      <button class="fp-btn {% if viewer_following %}fp-btn-soft{% else %}fp-btn-cta{% endif %}" type="submit">
+        {% if viewer_following %}Following{% else %}Follow{% endif %}
+      </button>
+    </form>
+  {% endif %}
+</div>
+
+{% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+{% endblock %}

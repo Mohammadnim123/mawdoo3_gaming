@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ t.nav_create }} · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto flex min-h-[70vh] w-full max-w-2xl items-center px-4{% endblock %}
+{% block content %}
+<div class="w-full">
+  <h1 class="fp-title-page mb-2 text-center text-ink">{{ t.hero_title }}</h1>
+  <p class="mb-6 text-center text-ink-secondary">{{ t.hero_subtitle }}</p>
+  <form method="post" action="/create" class="fp-card p-3">
+    {% csrf_token %}
+    <textarea name="prompt" rows="4" maxlength="1000" required autofocus
+              class="fp-input border-0 bg-transparent text-base"
+              placeholder="{{ t.hero_prompt_placeholder }}">{{ idea }}</textarea>
+    <div class="flex justify-end px-1 pb-1">
+      <button type="submit" class="fp-btn fp-btn-cta fp-btn-lg">{{ t.hero_cta }} →</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

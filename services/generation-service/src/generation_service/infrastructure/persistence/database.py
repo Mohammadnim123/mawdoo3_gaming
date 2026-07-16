@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     created_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS job_events (
+    job_id     TEXT NOT NULL,
+    seq        INTEGER NOT NULL,
+    event      TEXT NOT NULL,
+    data_json  TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (job_id, seq)
+);
+
 CREATE INDEX IF NOT EXISTS idx_games_created_at ON games (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_job_id ON llm_calls (job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_game_status ON generation_jobs (game_id, status);

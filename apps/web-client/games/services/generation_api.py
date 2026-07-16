@@ -35,21 +35,35 @@ class GenerationApiUnavailable(GenerationApiError):
 
 
 class GenerationApiClient:
-    def __init__(self, base_url: str, timeout_seconds: float) -> None:
+    def __init__(self, base_url: str, timeout_seconds: float, token: str = "") -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
+        self._token = token
         self._session = requests.Session()
 
     # -- generations --------------------------------------------------------
 
-    def start_generation(self, prompt: str, locale: str | None = None) -> dict[str, Any]:
+    def start_generation(
+        self, prompt: str, locale: str | None = None, skip_questions: bool = False
+    ) -> dict[str, Any]:
         body: dict[str, Any] = {"prompt": prompt}
         if locale:
             body["locale"] = locale
+        if skip_questions:
+            body["options"] = {"skip_questions": True}
         return self._request("POST", "/api/v1/generations", json=body)
 
     def get_generation(self, job_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/generations/{quote(job_id, safe='')}")
+
+    def submit_answers(self, job_id: str, answers: dict[str, Any]) -> dict[str, Any]:
+        return self._request(
+            "POST", f"/api/v1/generations/{quote(job_id, safe='')}/answers",
+            json={"answers": answers},
+        )
+
+    def cancel_generation(self, job_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/api/v1/generations/{quote(job_id, safe='')}/cancel")
 
     # -- games ---------------------------------------------------------------
 
@@ -66,6 +80,54 @@ class GenerationApiClient:
             json={"instruction": instruction},
         )
 
+    def list_versions(self, game_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/v1/games/{quote(game_id, safe='')}/versions")
+
+    def get_version_source(self, game_id: str, version_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            f"/api/v1/games/{quote(game_id, safe='')}/versions/{quote(version_id, safe='')}/source",
+        )
+
+    def rollback(self, game_id: str, version_id: str) -> dict[str, Any]:
+        return self._request(
+            "POST", f"/api/v1/games/{quote(game_id, safe='')}/rollback",
+            json={"version_id": version_id},
+        )
+
+    # -- SSE proxy helpers ---------------------------------------------------
+
+    def stream_url(self, job_id: str) -> str:
+        """Absolute URL of the engine's SSE stream (proxied by a Django view)."""
+        return f"{self._base_url}/api/v1/generations/{quote(job_id, safe='')}/stream"
+
+    def auth_headers(self) -> dict[str, str]:
+        """Headers a caller (e.g. the SSE proxy view) should forward upstream."""
+        headers = {"Accept": "text/event-stream"}
+        if self._token:
+            headers["X-Service-Token"] = self._token
+        return headers
+
+    def iter_stream(self, job_id: str, last_event_id: str | None = None):
+        """Yield raw SSE bytes from the engine stream (for the Django proxy).
+
+        Keeps `requests` inside the client. The read timeout is generous — an
+        SSE connection is long-lived; the connect timeout stays short.
+        """
+        headers = self.auth_headers()
+        if last_event_id:
+            headers["Last-Event-ID"] = last_event_id
+        with self._session.get(
+            self.stream_url(job_id), headers=headers, stream=True, timeout=(10, 3600)
+        ) as response:
+            if response.status_code >= 400:
+                raise GenerationApiError(
+                    f"stream error {response.status_code}", status_code=response.status_code
+                )
+            for chunk in response.iter_content(chunk_size=None):
+                if chunk:
+                    yield chunk
+
     # -- plumbing -------------------------------------------------------------
 
     def _request(
@@ -76,6 +138,9 @@ class GenerationApiClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        headers = {"Accept": "application/json"}
+        if self._token:
+            headers["X-Service-Token"] = self._token
         try:
             response = self._session.request(
                 method,
@@ -83,7 +148,7 @@ class GenerationApiClient:
                 json=json,
                 params=params,
                 timeout=self._timeout,
-                headers={"Accept": "application/json"},
+                headers=headers,
             )
         except requests.RequestException as exc:
             raise GenerationApiUnavailable(str(exc)) from exc
@@ -125,6 +190,8 @@ def get_client() -> GenerationApiClient:
         with _client_lock:
             if _client is None:
                 _client = GenerationApiClient(
-                    settings.GENERATION_API_URL, settings.GENERATION_API_TIMEOUT_SECONDS
+                    settings.GENERATION_API_URL,
+                    settings.GENERATION_API_TIMEOUT_SECONDS,
+                    token=getattr(settings, "GENERATION_SERVICE_TOKEN", ""),
                 )
     return _client

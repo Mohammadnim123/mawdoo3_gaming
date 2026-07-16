@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ t.nav_search }} · {{ site_name }}{% endblock %}
+{% block content %}
+<form action="/search" method="get" class="mb-6">
+  <input type="search" name="q" value="{{ q }}" autofocus
+         class="fp-input" placeholder="{{ t.search_placeholder }}" aria-label="{{ t.nav_search }}">
+</form>
+{% if q %}
+  <p class="mb-4 text-sm text-ink-muted">{{ games|length }} result{{ games|length|pluralize }} for “{{ q }}”</p>
+{% endif %}
+{% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+{% endblock %}

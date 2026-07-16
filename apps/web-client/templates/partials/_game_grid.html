@@ -1,0 +1,7 @@
+{% if items %}
+  <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+    {% for game in items %}{% include "partials/_game_card.html" %}{% endfor %}
+  </div>
+{% else %}
+  <div class="fp-card p-10 text-center text-ink-muted">{{ t.feed_empty }}</div>
+{% endif %}

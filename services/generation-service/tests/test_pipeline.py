@@ -44,6 +44,9 @@ class StubNodes:
     async def revise_blueprint(self, state):
         return {"blueprint": "revised-blueprint"}
 
+    async def paint_background(self, state):
+        return {"background_art": None}
+
     async def generate_code(self, state):
         return {"code": "code", "code_attempts": state.get("code_attempts", 0) + 1}
 
@@ -88,7 +91,15 @@ def create_state() -> dict:
 async def test_happy_path_order():
     pipeline = GenerationPipeline(StubNodes(), max_code_retries=2)
     names = await run(pipeline, create_state())
-    assert names == ["understand", "blueprint", "generate_code", "validate", "package", "store"]
+    assert names == [
+        "understand",
+        "blueprint",
+        "paint_background",
+        "generate_code",
+        "validate",
+        "package",
+        "store",
+    ]
 
 
 async def test_out_of_scope_is_terminal():

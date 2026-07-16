@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Status · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-10{% endblock %}
+{% block content %}
+<h1 class="fp-title-page mb-6 text-ink">System status</h1>
+<div class="grid gap-3">
+  <div class="fp-card flex items-center gap-3 p-4">
+    <span class="inline-block h-3 w-3 rounded-full" style="background:var(--color-success)"></span>
+    <span class="text-ink">Web application</span>
+    <span class="ms-auto text-sm text-success">Operational</span>
+  </div>
+  <div class="fp-card flex items-center gap-3 p-4">
+    <span class="inline-block h-3 w-3 rounded-full"
+          style="background:var(--color-{% if engine_ok %}success{% else %}danger{% endif %})"></span>
+    <span class="text-ink">Generation engine</span>
+    <span class="ms-auto text-sm {% if engine_ok %}text-success{% else %}text-danger{% endif %}">
+      {% if engine_ok %}Operational{% else %}Unreachable{% endif %}
+    </span>
+  </div>
+</div>
+{% endblock %}

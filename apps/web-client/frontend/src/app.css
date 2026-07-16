@@ -1,0 +1,122 @@
+/*
+ * Django web-client CSS entry — compiled by Tailwind v4 to
+ * games/static/games/dist/app.css and loaded by base.html.
+ *
+ *   @import "tailwindcss"   → the engine + utilities
+ *   @import "./codply-ui"   → the ported Codply design system (tokens, .fp-* classes)
+ *
+ * Tailwind scans the @source globs below for the utility classes actually used
+ * in Django templates and React island source, so only those are emitted.
+ */
+@import "tailwindcss";
+@import "./codply-ui.css";
+
+/* Where the utility classes live (paths are relative to this file). */
+@source "../../templates/**/*.html";
+@source "../../games/templates/**/*.html";
+@source "../src/**/*.{ts,tsx,js,jsx}";
+
+/*
+ * Webfont family names the token vars reference. The actual @font-face / <link>
+ * loading is done in base.html; these just wire the family names to the tokens.
+ */
+:root {
+  --font-space-grotesk: "Space Grotesk";
+  --font-inter: "Inter";
+  --font-jetbrains-mono: "JetBrains Mono";
+}
+
+/* Arabic remaps Tajawal onto both sans + display (brand wordmark stays Latin). */
+html[lang="ar"] {
+  --font-inter: "Tajawal";
+  --font-space-grotesk: "Tajawal";
+}
+
+/*
+ * Server-rendered component classes — the Codply primitives (Button, Card,
+ * Chip, Input) as CSS so Django templates stay clean and consistent with the
+ * React islands, which use the real @codply/ui components.
+ */
+@layer components {
+  .fp-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-colors;
+    position: relative; /* pair with .fp-hit in markup for a ≥44px touch target */
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .fp-btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .fp-btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+  .fp-btn-cta {
+    background-image: var(--gradient-cta);
+    color: var(--color-ink-on-accent);
+  }
+  .fp-btn-solid {
+    background-color: var(--color-ink);
+    color: var(--color-canvas);
+  }
+  .fp-btn-soft {
+    background-color: var(--color-surface-2);
+    color: var(--color-ink);
+    border-color: var(--color-edge);
+  }
+  .fp-btn-soft:hover {
+    border-color: var(--color-edge-strong);
+  }
+  .fp-btn-ghost {
+    color: var(--color-ink-secondary);
+  }
+  .fp-btn-ghost:hover {
+    color: var(--color-ink);
+    background-color: var(--color-surface-2);
+  }
+  .fp-btn-danger {
+    background-color: var(--color-danger);
+    color: #fff;
+  }
+
+  .fp-card {
+    @apply rounded-2xl overflow-hidden;
+    background-color: var(--color-surface-1);
+    border: 1px solid var(--color-edge-subtle);
+  }
+
+  .fp-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs;
+    background-color: var(--color-surface-2);
+    color: var(--color-ink-secondary);
+    border: 1px solid var(--color-edge);
+  }
+
+  .fp-input {
+    @apply w-full rounded-2xl px-4 py-3;
+    background-color: var(--color-surface-2);
+    color: var(--color-ink);
+    border: 1px solid var(--color-edge);
+    font-size: 16px; /* iOS focus-zoom guard */
+  }
+  .fp-input::placeholder {
+    color: var(--color-ink-muted);
+  }
+  .fp-input:focus {
+    outline: none;
+    border-color: var(--color-violet);
+  }
+
+  /* Brand wordmark. */
+  .fp-wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .fp-gradient-text {
+    background-image: var(--gradient-cta);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}

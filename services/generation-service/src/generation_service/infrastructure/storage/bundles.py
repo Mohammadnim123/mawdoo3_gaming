@@ -11,13 +11,17 @@ import mimetypes
 
 from generation_service.domain.entities import game_storage_prefix
 from generation_service.domain.ports import StoragePort
-from generation_service.infrastructure.packaging.assembler import OPTIONAL_RUNTIME_FILE
+from generation_service.infrastructure.packaging.assembler import (
+    OPTIONAL_ART_FILE,
+    OPTIONAL_RUNTIME_FILE,
+)
 
 
 async def store_bundle(storage: StoragePort, game_id: str, files: dict[str, bytes]) -> str:
     """Write every bundle file (concurrently — the keys are independent) and
-    remove the optional runtime if this bundle no longer ships it, so a tweak
-    that drops 3D leaves no orphan behind. Returns the storage prefix."""
+    remove optional files this bundle no longer ships (a tweak that drops 3D
+    or the painted backdrop leaves no orphan behind). Returns the storage
+    prefix."""
     prefix = game_storage_prefix(game_id)
 
     async def put(rel_path: str, data: bytes) -> None:
@@ -25,6 +29,7 @@ async def store_bundle(storage: StoragePort, game_id: str, files: dict[str, byte
         await storage.put(f"{prefix}/{rel_path}", data, content_type)
 
     await asyncio.gather(*(put(rel_path, data) for rel_path, data in files.items()))
-    if OPTIONAL_RUNTIME_FILE not in files:
-        await storage.delete(f"{prefix}/{OPTIONAL_RUNTIME_FILE}")
+    for optional in (OPTIONAL_RUNTIME_FILE, OPTIONAL_ART_FILE):
+        if optional not in files:
+            await storage.delete(f"{prefix}/{optional}")
     return prefix

@@ -6,13 +6,12 @@ app_name = "games"
 
 urlpatterns = [
     path("", views.home, name="home"),
-    path("generate/", views.generate, name="generate"),
-    path("generations/<str:job_id>/", views.generation_status, name="generation_status"),
-    path(
-        "api/generations/<str:job_id>/",
-        views.generation_status_data,
-        name="generation_status_data",
-    ),
-    path("games/<str:game_id>/", views.play, name="play"),
-    path("games/<str:game_id>/edit/", views.edit, name="edit"),
+    path("create", views.create, name="create"),
+    path("studio/<uuid:game_id>", views.studio, name="studio"),
+    path("studio/jobs/<uuid:job_ref_id>/stream", views.stream_proxy, name="stream"),
+    path("studio/jobs/<uuid:job_ref_id>/status", views.job_status, name="job_status"),
+    path("games/<uuid:game_id>/post", views.game_post, name="post"),
+    path("games/<uuid:game_id>/chat", views.game_chat, name="chat"),
+    path("games/<uuid:game_id>/remix", views.game_remix, name="remix"),
+    path("g/<slug:slug>", views.game_detail, name="detail"),
 ]

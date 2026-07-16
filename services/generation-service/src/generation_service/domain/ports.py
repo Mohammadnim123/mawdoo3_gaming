@@ -18,6 +18,7 @@ from generation_service.domain.entities import (
     LlmUsage,
     PipelineStage,
 )
+from generation_service.domain.events import JobEvent
 
 
 class StoragePort(Protocol):
@@ -75,3 +76,11 @@ class LlmCallLog(Protocol):
     async def record(self, job_id: str | None, usage: LlmUsage) -> None: ...
 
     async def usage_for_job(self, job_id: str) -> list[LlmUsage]: ...
+
+
+class JobEventStore(Protocol):
+    """Ordered, replayable log of a job's progress events (for SSE reconnect)."""
+
+    async def append(self, job_id: str, event: JobEvent) -> None: ...
+
+    async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]: ...

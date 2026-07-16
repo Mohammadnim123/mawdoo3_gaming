@@ -1,0 +1,16 @@
+{
+  "name": "codply-web-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frontend build for the Django web client: Codply design-system CSS (Tailwind v4) + React islands (workspace, player/feed).",
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss -i src/app.css -o ../games/static/games/dist/app.css --minify",
+    "watch:css": "tailwindcss -i src/app.css -o ../games/static/games/dist/app.css --watch",
+    "build": "npm run build:css"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.10",
+    "tailwindcss": "^4.1.10"
+  }
+}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ t.nav_settings }} · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-6{% endblock %}
+{% block content %}
+<h1 class="fp-title-page mb-6 text-ink">{{ t.nav_settings }}</h1>
+
+<form method="post" action="/account/settings" class="fp-card mb-4 grid gap-3 p-5">
+  {% csrf_token %}
+  <label class="text-xs text-ink-muted">{{ t.acct_display_name }}
+    <input class="fp-input mt-1" name="display_name" value="{{ user.display_name }}" maxlength="80">
+  </label>
+  <label class="text-xs text-ink-muted">{{ t.acct_bio }}
+    <textarea class="fp-input mt-1" name="bio" rows="2" maxlength="200">{{ user.bio }}</textarea>
+  </label>
+  <button class="fp-btn fp-btn-cta justify-self-start" type="submit">{{ t.acct_save }}</button>
+</form>
+
+<div class="fp-card grid gap-3 p-5">
+  <div class="flex items-center justify-between">
+    <span class="text-ink">Language</span>
+    <a href="?lang={{ other_locale }}" class="fp-btn fp-btn-soft fp-btn-sm">{{ t.other_lang }}</a>
+  </div>
+  <div class="flex items-center justify-between">
+    <span class="text-ink">Theme</span>
+    <button type="button" class="fp-btn fp-btn-soft fp-btn-sm" data-theme-toggle>Toggle</button>
+  </div>
+</div>
+{% endblock %}

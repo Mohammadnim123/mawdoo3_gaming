@@ -1,0 +1,51 @@
+{% load static %}<!doctype html>
+<html lang="{{ locale }}" dir="{{ dir }}" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ t.hero_subtitle }}{% endblock %}">
+  <meta name="theme-color" content="#0a0a0f">
+
+  {# Pre-paint theme so there is no flash: stored choice, else auto (day/night). #}
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("fp_theme");
+        if (!t || t === "auto") {
+          var h = new Date().getHours();
+          t = (h >= 7 && h < 19) ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+      } catch (e) {}
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Tajawal:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="{% static 'games/dist/app.css' %}">
+  {% block head %}{% endblock %}
+</head>
+<body class="min-h-dvh bg-canvas text-ink font-sans antialiased{% block body_class %}{% endblock %}">
+  {% block chrome %}{% include "chrome/_topbar.html" %}{% endblock %}
+
+  <main id="content" class="{% block main_class %}mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:pb-10{% endblock %}">
+    {% if messages %}
+      <div class="mb-4 space-y-2">
+        {% for m in messages %}
+          <div class="fp-card px-4 py-3 text-sm" role="status">{{ m }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block footer %}{% include "chrome/_footer.html" %}{% endblock %}
+  {% block mobilenav %}{% include "chrome/_mobile_tabbar.html" %}{% endblock %}
+
+  <script src="{% static 'games/js/chrome.js' %}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

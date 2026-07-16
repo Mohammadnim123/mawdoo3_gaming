@@ -103,6 +103,19 @@ When the blueprint's `rendering` is `webgl3d`, the template ships a pinned
 - Input stays on the SDK: `sdk.on(mount, 'pointerdown', ...)`, keyboard via
   `sdk.on(window, 'keydown', ...)`.
 
+## Painted art (optional, pipeline-provided)
+
+Some games ship with pipeline-painted art bundled next to `game.js`: a
+full-scene backdrop `bg.png` and/or transparent hero sprites
+`sprite_<name>.png`. **Only when the build instructions explicitly list
+them**: reference each by its exact relative filename — the backdrop from
+`game.css` as `url('bg.png')` (cover-fit, bottom scene layer), sprites via
+`<img>`/CSS or canvas `drawImage` (with a procedural placeholder until the
+image is loaded — never block `sdk.ready()` on image loading). When the
+instructions do not mention a file, it does not exist — never reference it,
+and draw that element procedurally instead. These relative bundle-internal
+paths are allowed; every external URL remains forbidden.
+
 ## Logic & puzzle games — correctness requirements
 
 For board/puzzle/quiz/word games the deep review stage verifies real logic, so:

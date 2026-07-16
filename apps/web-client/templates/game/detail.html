@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load game_extras %}
+{% block title %}{{ game|loc_title:locale }} · {{ site_name }}{% endblock %}
+{% block description %}{{ game|loc_summary:locale|default:game.prompt }}{% endblock %}
+{% block head %}
+  <meta property="og:title" content="{{ game|loc_title:locale }}">
+  <meta property="og:description" content="{{ game|loc_summary:locale|default:game.prompt }}">
+  {% if game.cover_url %}<meta property="og:image" content="{{ game.cover_url }}">{% endif %}
+  <meta property="og:type" content="website">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"VideoGame",
+   "name":"{{ game|loc_title:locale|escapejs }}",
+   "description":"{{ game|loc_summary:locale|default:game.prompt|escapejs }}",
+   "genre":"{{ game.genre|escapejs }}",
+   "author":{"@type":"Person","name":"{{ game.owner.display_name|escapejs }}"}}
+  </script>
+{% endblock %}
+{% block main_class %}mx-auto w-full max-w-4xl px-4 pb-24 pt-6{% endblock %}
+{% block content %}
+<div class="fp-card overflow-hidden">
+  <div class="relative w-full" style="aspect-ratio:16/10;background:var(--color-surface-2)">
+    <iframe id="game-frame" title="{{ game|loc_title:locale }}"
+            class="absolute inset-0 h-full w-full"
+            src="{{ game_src }}" sandbox="allow-scripts"
+            referrerpolicy="no-referrer" allow="fullscreen"
+            data-game-origin="{{ game_origin }}"></iframe>
+  </div>
+</div>
+
+<div class="mt-4 flex flex-wrap items-center gap-3">
+  <div class="min-w-0">
+    <h1 class="fp-title-section truncate text-ink">{{ game|loc_title:locale }}</h1>
+    <div class="flex items-center gap-2">
+      <a href="/u/{{ game.owner.handle }}" class="text-sm text-ink-secondary hover:text-ink">
+        {{ t.by }} {{ game.owner.display_name }}
+      </a>
+      {% if user.is_authenticated and not is_owner %}
+        <form method="post" action="/users/{{ game.owner.handle }}/follow">{% csrf_token %}
+          <button class="fp-btn {% if viewer_following %}fp-btn-soft{% else %}fp-btn-cta{% endif %} fp-btn-sm" type="submit">
+            {% if viewer_following %}Following{% else %}Follow{% endif %}
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if game.genre %}<span class="fp-chip">{{ game.genre }}</span>{% endif %}
+  <div class="ms-auto flex flex-wrap items-center gap-2">
+    <span class="fp-chip">▶ {{ game.play_count }}</span>
+    {% if user.is_authenticated %}
+      <form method="post" action="/games/{{ game.id }}/like">{% csrf_token %}
+        <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit" aria-pressed="{{ viewer_liked|yesno:'true,false' }}">{% if viewer_liked %}♥{% else %}♡{% endif %} {{ game.like_count }}</button>
+      </form>
+      <form method="post" action="/games/{{ game.id }}/save">{% csrf_token %}
+        <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">{% if viewer_saved %}★{% else %}☆{% endif %}</button>
+      </form>
+    {% else %}
+      <span class="fp-chip">♥ {{ game.like_count }}</span>
+    {% endif %}
+    <form method="post" action="/games/{{ game.id }}/share">{% csrf_token %}
+      <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">↗ {{ game.share_count }}</button>
+    </form>
+    {% if user.is_authenticated %}
+      <form method="post" action="/games/{{ game.id }}/remix">{% csrf_token %}
+        <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">⑂ {{ t.remix }}</button>
+      </form>
+    {% endif %}
+    {% if is_owner %}
+      <a href="/studio/{{ game.id }}" class="fp-btn fp-btn-soft fp-btn-sm">Studio</a>
+    {% endif %}
+    <button class="fp-btn fp-btn-soft fp-btn-sm" data-copy-link>{{ t.copy_link }}</button>
+  </div>
+</div>
+
+{% if game|loc_summary:locale %}
+  <p class="mt-3 text-ink-secondary">{{ game|loc_summary:locale }}</p>
+{% endif %}
+
+<section class="mt-8">
+  <h2 class="fp-title-section mb-3 text-ink">Comments · {{ game.comment_count }}</h2>
+  {% if user.is_authenticated %}
+    <form method="post" action="/games/{{ game.id }}/comments" class="mb-4 flex items-start gap-2">
+      {% csrf_token %}
+      <input class="fp-input" name="body" maxlength="500" required placeholder="Add a comment…">
+      <button class="fp-btn fp-btn-cta" type="submit">{{ t.ws_send }}</button>
+    </form>
+  {% else %}
+    <a href="/login?next=/g/{{ game.slug }}" class="mb-4 block text-sm text-ink-secondary hover:text-ink">{{ t.nav_login }} →</a>
+  {% endif %}
+  <ol class="grid gap-3">
+    {% for c in comments %}
+      <li class="fp-card p-3">
+        <div class="flex items-center gap-2 text-sm">
+          <a href="/u/{{ c.user.handle }}" class="font-semibold text-ink">{{ c.user.display_name }}</a>
+          <span class="text-xs text-ink-muted">{{ c.created_at|date:"M j" }}</span>
+          {% if user.is_authenticated and c.user_id == user.id or is_owner %}
+            <form method="post" action="/comments/{{ c.id }}/delete" class="ms-auto">{% csrf_token %}
+              <button class="text-xs text-ink-muted hover:text-danger" type="submit">{{ t.delete }}</button>
+            </form>
+          {% endif %}
+        </div>
+        <p class="mt-1 whitespace-pre-line text-ink-secondary">{{ c.body }}</p>
+        {% if c.reply_count %}<span class="text-xs text-ink-muted">{{ c.reply_count }} repl{{ c.reply_count|pluralize:"y,ies" }}</span>{% endif %}
+      </li>
+    {% empty %}
+      <li class="text-sm text-ink-muted">No comments yet.</li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll("[data-copy-link]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      navigator.clipboard && navigator.clipboard.writeText(location.href);
+      b.textContent = "✓";
+    });
+  });
+</script>
+{% endblock %}

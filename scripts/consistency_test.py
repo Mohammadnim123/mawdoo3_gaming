@@ -6,7 +6,7 @@ Two prompts in two languages and genres go through the full pipeline; the
 resulting bundles are then compared structurally:
 
   1. both generations succeed end-to-end
-  2. both bundles contain exactly the same file set (the five-file contract)
+  2. both bundles contain the five-file contract (+ declared optionals only)
   3. the pinned runtime (engine.js / engine.css) is byte-identical
   4. both games are on the same template version with the same manifest shape
   5. the index.html skeleton is identical once per-game values are normalized
@@ -45,6 +45,9 @@ PROMPTS = [
     "لعبة تخمين أرقام",
 ]
 EXPECTED_FILES = {"index.html", "engine.js", "engine.css", "game.js", "game.css"}
+# Per-game optional files: pinned 3D runtime, pipeline-painted art.
+OPTIONAL_FILES = {"three.min.js", "bg.png"}
+OPTIONAL_PREFIXES = ("sprite_",)
 POLL_SECONDS = 5
 TIMEOUT_SECONDS = 600
 
@@ -122,8 +125,15 @@ def compare(game_ids: list[str]) -> None:
 
     print("\n== Structural comparison ==")
     check(
-        set(a) == set(b) == EXPECTED_FILES,
-        "identical file sets (the five-file contract)",
+        all(
+            EXPECTED_FILES <= set(x)
+            and all(
+                f in OPTIONAL_FILES or f.startswith(OPTIONAL_PREFIXES)
+                for f in set(x) - EXPECTED_FILES
+            )
+            for x in (a, b)
+        ),
+        "core file set present (five-file contract + declared optionals only)",
         f"{sorted(a)} vs {sorted(b)}",
     )
     check(

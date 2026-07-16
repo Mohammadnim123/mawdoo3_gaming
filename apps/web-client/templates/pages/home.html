@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<section class="relative overflow-hidden border-b border-edge-subtle">
+  <div class="pointer-events-none absolute inset-0 opacity-60"
+       style="background:radial-gradient(60% 60% at 50% 0%, color-mix(in srgb, var(--color-violet) 18%, transparent), transparent 70%)"></div>
+  <div class="relative mx-auto w-full max-w-3xl px-4 py-14 text-center md:py-20">
+    <span class="fp-chip mx-auto mb-5">✨ {{ t.hero_pill }}</span>
+    <h1 class="fp-title-hero fp-wordmark mb-4">
+      <span class="fp-gradient-text">{{ t.hero_title }}</span>
+    </h1>
+    <p class="mx-auto mb-8 max-w-xl text-ink-secondary">{{ t.hero_subtitle }}</p>
+
+    <form action="/create" method="get" class="mx-auto max-w-2xl">
+      <div class="fp-card p-2">
+        <textarea name="idea" rows="2" maxlength="1000" required
+                  class="fp-input border-0 bg-transparent text-base focus:ring-0"
+                  placeholder="{{ t.hero_prompt_placeholder }}"></textarea>
+        <div class="flex items-center justify-between gap-2 px-2 pb-1">
+          <span class="text-xs text-ink-muted">{{ t.hero_examples }}</span>
+          <button type="submit" class="fp-btn fp-btn-cta">{{ t.hero_cta }} →</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+      <a class="fp-chip hover:text-ink" href="/create?idea=a+neon+endless+runner+dodging+lasers">Neon runner</a>
+      <a class="fp-chip hover:text-ink" href="/create?idea=a+relaxing+memory+match+card+game">Memory match</a>
+      <a class="fp-chip hover:text-ink" href="/create?idea=a+retro+space+shooter">Space shooter</a>
+      <a class="fp-chip hover:text-ink" href="/create?idea=a+snake+game+with+a+twist">Snake+</a>
+    </div>
+  </div>
+</section>
+
+<div class="mx-auto w-full max-w-6xl px-4 py-8">
+  <div class="mb-5 flex items-center gap-2">
+    <a href="/?sort=new" class="fp-chip {% if sort == 'new' %}text-ink{% endif %}">{{ t.feed_new }}</a>
+    <a href="/?sort=trending" class="fp-chip {% if sort == 'trending' %}text-ink{% endif %}">{{ t.feed_trending }}</a>
+    {% if user.is_authenticated %}
+      <a href="/?sort=following" class="fp-chip {% if sort == 'following' %}text-ink{% endif %}">{{ t.feed_following }}</a>
+    {% endif %}
+  </div>
+  {% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+</div>
+{% endblock %}

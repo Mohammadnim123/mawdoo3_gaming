@@ -1,0 +1,15 @@
+<footer class="mt-16 border-t border-edge-subtle">
+  <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-ink-muted md:flex-row md:items-center md:justify-between">
+    <div class="flex items-center gap-2">
+      <span class="fp-wordmark text-ink"><span class="fp-gradient-text">Cod</span>ply</span>
+      <span>· {{ t.tagline }}</span>
+    </div>
+    <nav class="flex flex-wrap items-center gap-x-5 gap-y-2">
+      <a class="hover:text-ink" href="/">{{ t.nav_feed }}</a>
+      <a class="hover:text-ink" href="/create">{{ t.nav_create }}</a>
+      <a class="hover:text-ink" href="/privacy">Privacy</a>
+      <a class="hover:text-ink" href="/terms">Terms</a>
+      <a class="hover:text-ink" href="?lang={{ other_locale }}">{{ t.other_lang }}</a>
+    </nav>
+  </div>
+</footer>

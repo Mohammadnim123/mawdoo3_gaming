@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ t.auth_check_email }} · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto flex min-h-[72vh] w-full max-w-md items-center px-4{% endblock %}
+{% block content %}
+<div class="fp-card w-full p-6 text-center">
+  <div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full text-2xl" style="background-color:var(--color-surface-2)">✉️</div>
+  <h1 class="fp-title-section mb-2 text-ink">{{ t.auth_check_email }}</h1>
+  {% if email %}<p class="text-sm text-ink-secondary">{{ email }}</p>{% endif %}
+  <a href="/login" class="fp-btn fp-btn-soft mt-5">← {{ t.auth_login }}</a>
+</div>
+{% endblock %}

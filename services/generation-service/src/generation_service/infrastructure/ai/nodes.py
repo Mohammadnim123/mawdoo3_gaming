@@ -9,6 +9,7 @@ schema-validated Anthropic SDK call recorded in the flat llm_calls log
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from generation_service.domain.blueprint import GameBlueprint
@@ -25,17 +26,24 @@ from generation_service.domain.entities import (
 from generation_service.domain.ports import LlmCallLog, StoragePort
 from generation_service.infrastructure.ai.llm import StructuredLlm
 from generation_service.infrastructure.ai.prompts import (
+    BACKGROUND_ART_SECTION,
     PREVIOUS_CODE_TEMPLATE,
     RETRY_FEEDBACK_TEMPLATE,
     build_blueprint,
     build_code,
     build_review,
     build_revise_blueprint,
+    build_sprites_section,
     build_understand,
 )
 from generation_service.infrastructure.ai.schemas import PromptAnalysis, ReviewVerdict
 from generation_service.infrastructure.ai.state import GenerationState
-from generation_service.infrastructure.packaging.assembler import TemplateAssembler
+from generation_service.infrastructure.art import ChromaCutout, GeminiArtClient
+from generation_service.infrastructure.packaging.assembler import (
+    OPTIONAL_ART_FILE,
+    TemplateAssembler,
+    sprite_file_name,
+)
 from generation_service.infrastructure.storage import store_bundle
 from generation_service.infrastructure.validation.gate import QualityGate
 
@@ -52,6 +60,7 @@ class GenerationNodes:
         assembler: TemplateAssembler,
         storage: StoragePort,
         llm_log: LlmCallLog,
+        art: GeminiArtClient | None = None,
     ) -> None:
         self._understanding_llm = understanding_llm
         self._blueprint_llm = blueprint_llm
@@ -60,6 +69,8 @@ class GenerationNodes:
         self._assembler = assembler
         self._storage = storage
         self._llm_log = llm_log
+        self._art = art
+        self._cutout = ChromaCutout()
 
     # ------------------------------------------------------------------ #
     # 1. Prompt understanding (scope check + normalization)
@@ -118,6 +129,82 @@ class GenerationNodes:
         return {"blueprint": blueprint}
 
     # ------------------------------------------------------------------ #
+    # 2c. Background painting (optional — the "painted world" quality lever)
+    # ------------------------------------------------------------------ #
+
+    async def paint_background(self, state: GenerationState) -> dict:
+        """Paint the blueprint's world backdrop (bg.png) and hero sprites
+        (sprite_<name>.png, transparent via chroma cutout) — concurrently.
+
+        Progressive enhancement, never a blocker: any failure (no client, no
+        brief, provider error) degrades that asset away and the code prompt's
+        procedural rendering takes over. Tweaks reuse the existing art so the
+        game's look stays stable across chat edits.
+        """
+        blueprint = state["blueprint"]
+        if state.get("mode") == JobKind.TWEAK:
+            return await self._carry_over_art(state, blueprint)
+        if self._art is None:
+            return {"background_art": None, "sprites": {}}
+
+        async def paint_bg() -> bytes | None:
+            brief = (blueprint.background_art_prompt or "").strip()
+            if not brief:
+                return None
+            return await self._art.paint_background(brief)
+
+        async def paint_sprite(name: str, brief: str) -> tuple[str, bytes]:
+            raw = await self._art.paint_sprite(brief)
+            cut = await asyncio.to_thread(self._cutout.cut, raw, target_size=(192, 192))
+            return sprite_file_name(name), cut
+
+        briefs = [
+            (b.name, b.prompt.strip()) for b in blueprint.sprite_briefs[:3] if b.prompt.strip()
+        ]
+        results = await asyncio.gather(
+            paint_bg(),
+            *(paint_sprite(name, brief) for name, brief in briefs),
+            return_exceptions=True,
+        )
+        background = results[0]
+        if isinstance(background, BaseException):
+            logger.warning("background painting failed for %s: %s", state["game_id"], background)
+            background = None
+        sprites: dict[str, bytes] = {}
+        for outcome in results[1:]:
+            if isinstance(outcome, BaseException):
+                logger.warning("sprite painting failed for %s: %s", state["game_id"], outcome)
+                continue
+            file_name, data = outcome
+            sprites[file_name] = data
+        logger.info(
+            "art for %s: backdrop=%s, sprites=%s",
+            state["game_id"],
+            "yes" if background else "no",
+            sorted(sprites) or "none",
+        )
+        return {"background_art": background, "sprites": sprites}
+
+    async def _carry_over_art(self, state: GenerationState, blueprint: GameBlueprint) -> dict:
+        """Tweak mode: reuse the published bundle's art files unchanged."""
+        prefix = game_storage_prefix(state["game_id"])
+
+        async def fetch(rel_path: str) -> bytes | None:
+            try:
+                return await self._storage.get(f"{prefix}/{rel_path}")
+            except Exception:  # noqa: BLE001 — absent art is the normal case
+                return None
+
+        background = await fetch(OPTIONAL_ART_FILE)
+        sprites: dict[str, bytes] = {}
+        for brief in blueprint.sprite_briefs[:3]:
+            file_name = sprite_file_name(brief.name)
+            data = await fetch(file_name)
+            if data is not None:
+                sprites[file_name] = data
+        return {"background_art": background, "sprites": sprites}
+
+    # ------------------------------------------------------------------ #
     # 3. Code generation (AI#2 — bespoke gameplay on the template contract)
     # ------------------------------------------------------------------ #
 
@@ -128,11 +215,15 @@ class GenerationNodes:
         if attempts and gate_report and not gate_report.passed:
             feedback = RETRY_FEEDBACK_TEMPLATE.format(failures=gate_report.feedback())
         previous_section = await self._previous_code_section(state)
+        art_section = (BACKGROUND_ART_SECTION if state.get("background_art") else "") + (
+            build_sprites_section(sorted(state.get("sprites") or {}))
+        )
         system, user = build_code(
             self._assembler.contract_doc,
             state["blueprint"].model_dump_json(indent=2),
             previous_section,
             feedback,
+            art_section,
         )
         code, usage = await self._code_llm.generate(
             "code_generation", system, user, GeneratedGameCode
@@ -285,7 +376,13 @@ class GenerationNodes:
     # ------------------------------------------------------------------ #
 
     async def package(self, state: GenerationState) -> dict:
-        files = self._assembler.assemble(state["game_id"], state["blueprint"], state["code"])
+        files = self._assembler.assemble(
+            state["game_id"],
+            state["blueprint"],
+            state["code"],
+            background_art=state.get("background_art"),
+            sprites=state.get("sprites"),
+        )
         return {"bundle_files": files}
 
     # ------------------------------------------------------------------ #

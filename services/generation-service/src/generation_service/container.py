@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from generation_service.application.events import JobEventBus
 from generation_service.application.job_runner import BackgroundJobRunner
 from generation_service.application.use_cases import (
     GetGameUseCase,
@@ -22,6 +23,7 @@ from generation_service.domain.entities import FailureCode
 from generation_service.infrastructure.ai.llm import StructuredLlm, create_client
 from generation_service.infrastructure.ai.nodes import GenerationNodes
 from generation_service.infrastructure.ai.pipeline import GenerationPipeline
+from generation_service.infrastructure.art import GeminiArtClient
 from generation_service.infrastructure.packaging.assembler import (
     StarterTemplate,
     TemplateAssembler,
@@ -29,6 +31,7 @@ from generation_service.infrastructure.packaging.assembler import (
 from generation_service.infrastructure.persistence import (
     Database,
     SqliteGameRepository,
+    SqliteJobEventStore,
     SqliteJobRepository,
     SqliteLlmCallLog,
 )
@@ -51,6 +54,9 @@ class Container:
         self.games = SqliteGameRepository(self.database)
         self.jobs = SqliteJobRepository(self.database)
         self.llm_log = SqliteLlmCallLog(self.database)
+        self.job_events = SqliteJobEventStore(self.database)
+        # In-process pub/sub for live SSE (API + workers share this process).
+        self.job_event_bus = JobEventBus()
 
         # Jobs run in-process, so anything still queued/running in the DB was
         # lost with the previous process — fail it now instead of letting
@@ -93,6 +99,19 @@ class Container:
                 max_output_tokens=s.ai.llm_max_output_tokens,
             )
 
+        # Background painting — optional quality lever; silently absent
+        # without a key so local setups keep working with zero config.
+        art = None
+        if s.features.feature_background_art and s.art.gemini_api_key:
+            art = GeminiArtClient(
+                s.art.gemini_api_key,
+                model=s.art.gemini_image_model,
+                base_url=s.art.gemini_base_url,
+                timeout_seconds=s.art.art_timeout_seconds,
+            )
+        else:
+            logger.info("background painting disabled (feature flag off or no GEMINI_API_KEY)")
+
         nodes = GenerationNodes(
             understanding_llm=structured(s.ai.understanding_model),
             blueprint_llm=structured(s.ai.blueprint_model),
@@ -101,6 +120,7 @@ class Container:
             assembler=self.assembler,
             storage=self.storage,
             llm_log=self.llm_log,
+            art=art,
         )
         self.pipeline = GenerationPipeline(
             nodes,
@@ -120,6 +140,8 @@ class Container:
             blueprint_model=s.ai.blueprint_model,
             code_model=s.ai.code_model,
             timeout_seconds=s.pipeline.generation_timeout_seconds,
+            event_store=self.job_events,
+            event_bus=self.job_event_bus,
         )
         self.start_generation = StartGenerationUseCase(
             jobs=self.jobs, runner=self.job_runner, run_generation=self.run_generation

@@ -19,10 +19,19 @@ from generation_service.domain.blueprint import GameBlueprint
 from generation_service.domain.entities import GeneratedGameCode
 
 # The bundle contract: every generated game ships exactly these files
-# (+ three.min.js when the blueprint is webgl3d). Tests import this constant
-# instead of maintaining their own copies.
+# (+ three.min.js when the blueprint is webgl3d, + bg.png when the pipeline
+# painted a backdrop). Tests import these constants instead of maintaining
+# their own copies.
 BUNDLE_FILES = frozenset({"index.html", "engine.js", "engine.css", "game.js", "game.css"})
 OPTIONAL_RUNTIME_FILE = "three.min.js"
+OPTIONAL_ART_FILE = "bg.png"
+SPRITE_FILE_PREFIX = "sprite_"
+
+
+def sprite_file_name(name: str) -> str:
+    """Bundle filename for a blueprint sprite brief (sanitized, collision-safe)."""
+    safe = "".join(c for c in name if c.isalnum() or c in "-_") or "sprite"
+    return f"{SPRITE_FILE_PREFIX}{safe}.png"
 
 _TOKEN_PATTERN = re.compile(r"__(LANG|DIR|TEMPLATE_VERSION|TITLE|MANIFEST_JSON|EXTRA_RUNTIME)__")
 
@@ -74,7 +83,12 @@ class TemplateAssembler:
         return self._template.contract_doc
 
     def assemble(
-        self, game_id: str, blueprint: GameBlueprint, code: GeneratedGameCode
+        self,
+        game_id: str,
+        blueprint: GameBlueprint,
+        code: GeneratedGameCode,
+        background_art: bytes | None = None,
+        sprites: dict[str, bytes] | None = None,
     ) -> dict[str, bytes]:
         """Return the complete bundle as {relative_path: content}."""
         locale = blueprint.default_locale
@@ -105,6 +119,10 @@ class TemplateAssembler:
         }
         if wants_3d:
             bundle[OPTIONAL_RUNTIME_FILE] = self._template.three_js  # type: ignore[assignment]
+        if background_art:
+            bundle[OPTIONAL_ART_FILE] = background_art
+        for file_name, data in (sprites or {}).items():
+            bundle[file_name] = data
         return bundle
 
     def _runtime_manifest(self, game_id: str, blueprint: GameBlueprint) -> str:

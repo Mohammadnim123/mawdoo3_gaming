@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ t.nav_credits }} · {{ site_name }}{% endblock %}
+{% block content %}
+<h1 class="fp-title-page mb-6 text-ink">{{ t.nav_credits }}</h1>
+
+<div class="grid gap-4 md:grid-cols-2">
+  <div class="fp-card p-5">
+    <div class="text-sm text-ink-muted">Plan</div>
+    <div class="fp-title-section text-ink">{% if sub and sub.plan != 'free' %}{{ sub.plan|title }}{% else %}Free{% endif %}</div>
+    {% if not sub or sub.plan == 'free' %}
+      <form method="post" action="/account/billing/checkout" class="mt-3">{% csrf_token %}
+        <button class="fp-btn fp-btn-cta" type="submit">Upgrade to Pro</button>
+      </form>
+    {% else %}
+      <div class="mt-1 text-sm text-ink-secondary">Renews {{ sub.period_end|date:"M j, Y" }}</div>
+    {% endif %}
+  </div>
+
+  <div class="fp-card p-5">
+    <div class="text-sm text-ink-muted">Balance</div>
+    <div class="fp-title-section text-ink">{{ balance_cents }}¢</div>
+    <div class="mt-1 text-sm text-ink-secondary">Today: {{ used_today }}/{{ quota }} generations</div>
+    <form method="post" action="/account/billing/claim" class="mt-3">{% csrf_token %}
+      <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">Claim daily credits</button>
+    </form>
+  </div>
+</div>
+
+<h2 class="fp-title-section mb-3 mt-8 text-ink">History</h2>
+<ol class="grid gap-2 text-sm">
+  {% for row in ledger %}
+    <li class="fp-card flex items-center gap-3 p-3">
+      <span class="text-ink-secondary">{{ row.note|default:row.kind }}</span>
+      <span class="ms-auto {% if row.amount_cents >= 0 %}text-success{% else %}text-ink{% endif %}">
+        {% if row.amount_cents >= 0 %}+{% endif %}{{ row.amount_cents }}¢
+      </span>
+      <span class="text-xs text-ink-muted">{{ row.created_at|date:"M j" }}</span>
+    </li>
+  {% empty %}
+    <li class="fp-card p-6 text-center text-ink-muted">No transactions yet.</li>
+  {% endfor %}
+</ol>
+{% endblock %}

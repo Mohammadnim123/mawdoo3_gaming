@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Privacy · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-10{% endblock %}
+{% block content %}
+<article class="prose-invert grid gap-4 text-ink-secondary">
+  <h1 class="fp-title-page text-ink">Privacy Policy</h1>
+  <p>{{ site_name }} lets you turn ideas into playable browser games. This page explains, in plain language, what we collect and why.</p>
+  <h2 class="fp-title-section text-ink">What we store</h2>
+  <p>Your account (email, handle, display name), the games you create and their versions, and engagement you produce (plays, likes, comments, follows). Generated games are served from an isolated, sandboxed origin.</p>
+  <h2 class="fp-title-section text-ink">Prompts &amp; generation</h2>
+  <p>Prompts you submit are sent to our generation service to build your game. We keep them associated with your game for reproducibility and editing.</p>
+  <h2 class="fp-title-section text-ink">Your choices</h2>
+  <p>You control the visibility of each game (public, unlisted, private) and can delete your games. Contact us to remove your account.</p>
+  <p class="text-sm text-ink-muted">This is a product policy for the platform, not legal advice.</p>
+</article>
+{% endblock %}

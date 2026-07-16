@@ -88,6 +88,17 @@ class AISettings(_Base):
     llm_max_output_tokens: int = 32000
 
 
+class ArtSettings(_Base):
+    """Background painting — Gemini native image generation ("Nano Banana").
+    Optional by design: with no key (or the feature flag off) the pipeline
+    skips painting and games keep the procedural layered backdrop."""
+
+    gemini_api_key: str = ""
+    gemini_image_model: str = "gemini-2.5-flash-image"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com"
+    art_timeout_seconds: float = 90.0
+
+
 class StorageSettings(_Base):
     # 'local' mirrors the object-store key layout on disk; 's3' is the
     # future config swap (same StoragePort, same keys).
@@ -124,6 +135,7 @@ class PipelineSettings(_Base):
 
 class FeatureFlags(_Base):
     feature_llm_review: bool = True  # deep logic review in the gate (kill switch)
+    feature_background_art: bool = True  # painted bg.png backdrop (needs GEMINI_API_KEY)
     feature_tweaks_api: bool = True  # chat-edit an existing game (kill switch)
     feature_share_links: bool = False
 
@@ -146,6 +158,7 @@ class Settings:
         self.app = AppSettings()
         self.logging = LoggingSettings()
         self.ai = AISettings()
+        self.art = ArtSettings()
         self.storage = StorageSettings()
         self.database = DatabaseSettings()
         self.pipeline = PipelineSettings()

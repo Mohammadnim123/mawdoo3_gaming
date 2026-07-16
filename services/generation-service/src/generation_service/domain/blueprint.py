@@ -61,6 +61,19 @@ class UiString(BaseModel):
     ar: str
 
 
+class SpriteBrief(BaseModel):
+    """A hero-entity sprite the pipeline paints as real art (sprite_<name>.png)."""
+
+    name: str = Field(description="snake_case identifier, e.g. 'ball' — becomes the filename")
+    prompt: str = Field(
+        description=(
+            "Short art brief for ONE isolated subject in the game's art style, "
+            "e.g. 'classic black-and-white soccer ball, glossy, cartoon style'. "
+            "One subject only — no scene, no text"
+        )
+    )
+
+
 class GameBlueprint(BaseModel):
     """Structured, machine-readable design for one small browser mini-game."""
 
@@ -78,7 +91,12 @@ class GameBlueprint(BaseModel):
     lose_condition: str | None = Field(default=None, description="How the player loses, if any")
     rules: list[str] = Field(description="3-8 short, individually checkable gameplay rules")
     controls: list[Control]
-    difficulty: str = Field(description="Difficulty shape, e.g. 'speed increases every 5 points'")
+    difficulty: str = Field(
+        description=(
+            "Difficulty shape — ramp ONE axis at a time with an explicit cap, "
+            "e.g. 'scroll speed +100% per minute, capped at 2.2x'"
+        )
+    )
     rendering: Literal["canvas", "dom", "webgl3d"] = Field(
         description=(
             "canvas for 2D motion/physics games, dom for card/board/quiz games, "
@@ -90,13 +108,38 @@ class GameBlueprint(BaseModel):
     )
     visual_style: str = Field(
         description=(
-            "Complete art direction in one dense paragraph: named theme, concrete palette "
-            "of 4-6 hex colors (background / surface / primary / accent / danger-success), "
-            "lighting & atmosphere (gradients, vignette, glow), the look of each major "
-            "entity, and 2-3 signature effects (particles, trails, pulses). Must be "
-            "achievable procedurally with CSS/canvas gradients, shadows, shapes, Unicode "
-            "and emoji — no image assets exist"
+            "Complete art direction in one dense paragraph: ONE named look (e.g. "
+            "neon-arcade, pastel-toy, dusk-gradient, retro-pixel, lowpoly-nature — never "
+            "blend two), a 6-slot hex palette with fixed roles (bg / secondary=environment "
+            "/ primary=player / accent=rewards / danger=hazards / glow=fx; background "
+            "never pure black, player and hazards must pop off what they overlap), "
+            "lighting & atmosphere (gradients, vignette, fog, rim glow), the look of each "
+            "major entity (shadows hue-shifted toward blue/violet, never black), and 2-3 "
+            "signature effects (particles, trails, pulses). Must be achievable "
+            "procedurally with CSS/canvas gradients, shadows, shapes, Unicode and emoji — "
+            "no image assets exist"
         )
+    )
+    background_art_prompt: str = Field(
+        default="",
+        description=(
+            "One-sentence painting brief for a full-scene world backdrop image "
+            "(scene + lighting + palette mood + 'uncluttered center area for gameplay'; "
+            "never characters, never text), e.g. 'sunset football stadium with packed "
+            "colorful crowds, dramatic golden light, uncluttered green pitch in the "
+            "center'. Fill it for representational themes (stadium, jungle, kitchen, "
+            "space, ocean); leave EMPTY for abstract looks (neon grid, minimal zen, "
+            "plain board) that compose better procedurally"
+        ),
+    )
+    sprite_briefs: list[SpriteBrief] = Field(
+        default_factory=list,
+        description=(
+            "0-3 hero entities that deserve REAL painted art instead of code-drawn "
+            "shapes — the game's most-looked-at objects (the ball, the player "
+            "character, the collectible, the trophy). Simple geometry (walls, "
+            "paddles, grids, particles) stays procedural — never brief those"
+        ),
     )
     entities: list[str] = Field(description="Main game objects, e.g. ['snake', 'food', 'walls']")
     tweaks: list[TweakParameter] = Field(description="2-6 numeric knobs with sensible defaults")

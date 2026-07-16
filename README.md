@@ -65,8 +65,12 @@ make consistency           # generate 2 games, verify structural consistency
 The **generation service** owns the whole pipeline as an explicit async
 orchestrator over **Anthropic SDK** calls: an intake stage classifies scope
 and language; **Agent 1** emits a structured, machine-readable **blueprint**
-(internal artifact — users never see it); **Agent 2** writes bespoke gameplay
-code against the **starter template contract**; a **blocking quality gate**
+(internal artifact — users never see it); an optional **painting stage**
+(Gemini image generation, `GEMINI_API_KEY`) turns the blueprint's art briefs
+into a full-scene `bg.png` backdrop plus up to 3 transparent hero sprites
+(`sprite_<name>.png`, flood-fill chroma cutout) bundled with the game — absent
+or failing, games degrade to procedural rendering; **Agent 2** writes bespoke
+gameplay code against the **starter template contract**; a **blocking quality gate**
 verifies the contract, sandbox rules, lifecycle discipline, localization,
 syntax, and a headless **runtime smoke boot** (failures feed back into capped
 retries); the packager assembles a **self-contained static bundle** on the

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ t.nav_dashboard }} · {{ site_name }}{% endblock %}
+{% block content %}
+<h1 class="fp-title-page mb-6 text-ink">{{ t.nav_dashboard }}</h1>
+
+<div class="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+  {% for label, value in totals.items %}
+    <div class="fp-card p-4">
+      <div class="text-2xl font-bold text-ink">{{ value }}</div>
+      <div class="text-xs uppercase tracking-wide text-ink-muted">{{ label }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="mb-8 fp-card p-5">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-sm text-ink-muted">Earnings</div>
+      <div class="fp-title-section text-ink">{{ earned_total }}¢</div>
+    </div>
+    <form method="post" action="/account/billing/checkout">{% csrf_token %}
+      <span class="text-xs text-ink-muted">Payouts open at 1000¢</span>
+    </form>
+  </div>
+</div>
+
+<h2 class="fp-title-section mb-3 text-ink">{{ t.nav_my_games }}</h2>
+{% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+{% endblock %}

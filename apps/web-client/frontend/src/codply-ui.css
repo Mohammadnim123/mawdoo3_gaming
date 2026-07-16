@@ -1,0 +1,317 @@
+/*
+ * Codply design system — ported verbatim from codply/packages/ui/src/styles.css.
+ * Maps design tokens to CSS variables + Tailwind v4 utilities.
+ *
+ * FLAT design: zero box-shadow anywhere; elevation = 1px borders + layered
+ * surface tones.
+ *
+ * THEMING (E32): the `@theme` block is the DARK palette and the default.
+ * `[data-theme="light"]` re-maps every color at runtime. New `--color-*`
+ * tokens MUST be added to BOTH palettes.
+ */
+
+@theme {
+  /* Canvas / surfaces / borders */
+  --color-canvas: #0a0a0f;
+  --color-surface-1: #12121a;
+  --color-surface-2: #1a1a24;
+  --color-surface-3: #22222e;
+  --color-edge-subtle: #1e1e2a;
+  --color-edge: #2a2a3a;
+  --color-edge-strong: #3d3d52;
+
+  /* Text */
+  --color-ink: #f4f4f8;
+  --color-ink-secondary: #a0a0b8;
+  --color-ink-muted: #6b6b80;
+  --color-ink-on-accent: #0a0a0f;
+
+  /* Accent pair (gradient reserved for generate/CTA moments) */
+  --color-violet: #8b5cf6;
+  --color-cyan: #22d3ee;
+
+  /* Semantic */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #f43f5e;
+  --color-info: #0ea5e9;
+
+  /* Decorative accents */
+  --color-pink: #ec4899;
+  --color-orange: #f97316;
+  --color-lime: #84cc16;
+  --color-slate: #94a3b8;
+
+  /* Genre hues */
+  --color-genre-runner: #f59e0b;
+  --color-genre-platformer: #10b981;
+  --color-genre-puzzle: #0ea5e9;
+  --color-genre-shooter: #f43f5e;
+  --color-genre-arcade: #8b5cf6;
+  --color-genre-snake: #84cc16;
+  --color-genre-breakout: #f97316;
+  --color-genre-flappy: #22d3ee;
+
+  /* Type — the app provides the webfont vars (see app.css). */
+  --font-display: var(--font-space-grotesk, "Space Grotesk"), Inter, system-ui, sans-serif;
+  --font-sans: var(--font-inter, Inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace, SFMono-Regular,
+    monospace;
+
+  /* Radius — house default is 2xl (16px) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 16px;
+
+  /* Motion — 150–250ms ease-out */
+  --ease-out-fp: cubic-bezier(0, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 250ms;
+
+  /* The one gradient */
+  --gradient-cta: linear-gradient(135deg, #8b5cf6 0%, #22d3ee 100%);
+}
+
+/* Themes — dark is the @theme default; light re-maps every color. */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-canvas: #f4f4f9;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #ececf4;
+  --color-surface-3: #ffffff;
+  --color-edge-subtle: #e4e4ee;
+  --color-edge: #d4d4e2;
+  --color-edge-strong: #adadc6;
+
+  --color-ink: #15151e;
+  --color-ink-secondary: #4e4e62;
+  --color-ink-muted: #71718a;
+  --color-ink-on-accent: #ffffff;
+
+  --color-violet: #7c3aed;
+  --color-cyan: #0e7490;
+
+  --color-success: #047857;
+  --color-warning: #b45309;
+  --color-danger: #be123c;
+  --color-info: #0369a1;
+
+  --color-pink: #db2777;
+  --color-orange: #c2410c;
+  --color-lime: #4d7c0f;
+  --color-slate: #64748b;
+
+  --color-genre-runner: #b45309;
+  --color-genre-platformer: #047857;
+  --color-genre-puzzle: #0369a1;
+  --color-genre-shooter: #be123c;
+  --color-genre-arcade: #7c3aed;
+  --color-genre-snake: #4d7c0f;
+  --color-genre-breakout: #c2410c;
+  --color-genre-flappy: #0e7490;
+}
+
+/* Base resets */
+@layer base {
+  html {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-violet) 40%, transparent);
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-violet);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Mobile-first system classes */
+@layer components {
+  .fp-hit {
+    position: relative;
+  }
+  @media (pointer: coarse) {
+    .fp-hit::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  .fp-scroll-x {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 12px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 10px,
+      #000 calc(100% - 24px),
+      transparent 100%
+    );
+  }
+  .fp-scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+  .fp-scroll-x[data-overflowing="false"] {
+    mask-image: none;
+  }
+  .fp-scroll-x > * {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  [dir="rtl"] .fp-scroll-x {
+    mask-image: linear-gradient(
+      270deg,
+      transparent 0,
+      #000 10px,
+      #000 calc(100% - 24px),
+      transparent 100%
+    );
+  }
+
+  [dir="rtl"] .fp-flip-rtl {
+    transform: scaleX(-1);
+  }
+
+  .fp-no-scrollbar {
+    scrollbar-width: none;
+  }
+  .fp-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fp-title-hero {
+    font-size: clamp(2.25rem, 1rem + 6vw, 3.75rem);
+    line-height: 1.1;
+  }
+  .fp-title-page {
+    font-size: clamp(1.5rem, 1.1rem + 2vw, 2rem);
+    line-height: 1.2;
+  }
+  .fp-title-section {
+    font-size: clamp(1.125rem, 1rem + 0.75vw, 1.375rem);
+    line-height: 1.3;
+  }
+
+  .fp-safe-b {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .fp-safe-x {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+:root {
+  --fp-bottom-nav: 0px;
+}
+
+/* Keyframes used by components */
+@keyframes fp-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fp-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.fp-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-ink) 8%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: fp-shimmer 1.6s var(--ease-out-fp) infinite;
+}
+
+.fp-pulse {
+  animation: fp-pulse 1.4s var(--ease-out-fp) infinite;
+}
+
+.fp-shine-overlay {
+  background-image: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.18) 45%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0.18) 55%,
+    transparent 62%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  pointer-events: none;
+  user-select: none;
+  animation: fp-shine-sweep 7s linear infinite;
+}
+.fp-shine-overlay * {
+  background: none !important;
+  color: inherit !important;
+  animation: none !important;
+}
+[dir="rtl"] .fp-shine-overlay {
+  animation-direction: reverse;
+}
+@keyframes fp-shine-sweep {
+  0% {
+    background-position: 250% 0;
+  }
+  60%,
+  100% {
+    background-position: -150% 0;
+  }
+}

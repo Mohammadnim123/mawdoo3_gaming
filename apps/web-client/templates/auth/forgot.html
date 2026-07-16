@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ t.auth_forgot }} · {{ site_name }}{% endblock %}
+{% block main_class %}mx-auto flex min-h-[72vh] w-full max-w-md items-center px-4{% endblock %}
+{% block content %}
+<div class="fp-card w-full p-6">
+  <h1 class="fp-title-section mb-4 text-ink">{{ t.auth_forgot }}</h1>
+  <form method="post" action="/forgot-password" class="grid gap-3">
+    {% csrf_token %}
+    <input class="fp-input" type="email" name="email" required autocomplete="email"
+           placeholder="{{ t.auth_email }}" aria-label="{{ t.auth_email }}">
+    <button type="submit" class="fp-btn fp-btn-cta w-full">{{ t.auth_continue }}</button>
+  </form>
+  <a href="/login" class="mt-4 block text-center text-sm text-ink-secondary hover:text-ink">← {{ t.auth_login }}</a>
+</div>
+{% endblock %}
