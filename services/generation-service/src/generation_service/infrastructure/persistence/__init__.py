@@ -1,6 +1,7 @@
 from generation_service.infrastructure.persistence.database import Database
 from generation_service.infrastructure.persistence.repositories import (
     SqliteGameRepository,
+    SqliteGameVersionRepository,
     SqliteJobEventStore,
     SqliteJobRepository,
     SqliteLlmCallLog,
@@ -9,6 +10,7 @@ from generation_service.infrastructure.persistence.repositories import (
 __all__ = [
     "Database",
     "SqliteGameRepository",
+    "SqliteGameVersionRepository",
     "SqliteJobEventStore",
     "SqliteJobRepository",
     "SqliteLlmCallLog",

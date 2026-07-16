@@ -39,14 +39,19 @@ class JobEventBus:
 class JobEventEmitter:
     """Assigns monotonic seq numbers for one job, persisting + publishing each.
 
-    One job runs in one task, so a plain in-memory counter is sufficient.
+    One job runs in one task, so a plain in-memory counter is sufficient —
+    but a job that paused for clarifying answers resumes in a NEW task, so
+    the counter must continue from the persisted log (start_seq); the store's
+    INSERT OR IGNORE would silently drop reused seqs otherwise.
     """
 
-    def __init__(self, job_id: str, store: JobEventStore, bus: JobEventBus) -> None:
+    def __init__(
+        self, job_id: str, store: JobEventStore, bus: JobEventBus, start_seq: int = 0
+    ) -> None:
         self._job_id = job_id
         self._store = store
         self._bus = bus
-        self._seq = 0
+        self._seq = start_seq
 
     async def emit(self, event: str, data: dict | None = None) -> None:
         self._seq += 1

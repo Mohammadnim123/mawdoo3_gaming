@@ -8,12 +8,19 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
 from generation_service.api.deps import get_container
-from generation_service.api.schemas import GenerationCreateRequest, GenerationResponse
+from generation_service.api.schemas import (
+    AnswersRequest,
+    GenerationCreateRequest,
+    GenerationResponse,
+)
 from generation_service.container import Container
 from generation_service.domain.events import JobEvent
 
 router = APIRouter(prefix="/api/v1/generations", tags=["generations"])
 
+# Only genuinely-final events close the stream. The clarify pause ('questions')
+# keeps it open on heartbeats: answers arrive over plain HTTP and the resumed
+# run's events flow down the same connection.
 _TERMINAL_EVENTS = {"done", "failed"}
 _HEARTBEAT_SECONDS = 5.0
 
@@ -28,7 +35,32 @@ async def start_generation(
     container: Annotated[Container, Depends(get_container)],
 ) -> GenerationResponse:
     """Accept a prompt and start an async generation job. Poll GET /{id} for progress."""
-    job = await container.start_generation.execute(body.prompt, body.locale)
+    job = await container.start_generation.execute(
+        body.prompt, body.locale, skip_clarify=body.options.skip_questions
+    )
+    return GenerationResponse.from_entity(job)
+
+
+@router.post("/{job_id}/answers", response_model=GenerationResponse)
+async def answer_questions(
+    job_id: str,
+    body: AnswersRequest,
+    container: Annotated[Container, Depends(get_container)],
+) -> GenerationResponse:
+    """Answer a paused job's clarifying questions and resume it. An empty
+    answers object accepts every default ('Surprise me'). 409 unless the job
+    is awaiting input."""
+    job = await container.answer_questions.execute(job_id, body.answers)
+    return GenerationResponse.from_entity(job)
+
+
+@router.post("/{job_id}/cancel", response_model=GenerationResponse)
+async def cancel_generation(
+    job_id: str,
+    container: Annotated[Container, Depends(get_container)],
+) -> GenerationResponse:
+    """Stop an in-flight generation. 409 once it already finished."""
+    job = await container.cancel_generation.execute(job_id)
     return GenerationResponse.from_entity(job)
 
 

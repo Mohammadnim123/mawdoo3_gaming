@@ -23,7 +23,13 @@ from generation_service.domain.blueprint import (
     TweakParameter,
     UiString,
 )
-from generation_service.domain.entities import Game, GeneratedGameCode
+from generation_service.domain.entities import (
+    Game,
+    GameVersion,
+    GeneratedGameCode,
+    game_version_prefix,
+    new_id,
+)
 from generation_service.infrastructure.storage import store_bundle
 
 GAME_ID = "demo-coins"
@@ -185,9 +191,21 @@ async def main() -> None:
             raise SystemExit(1)
 
         files = container.assembler.assemble(GAME_ID, BLUEPRINT, code)
-        prefix = await store_bundle(container.storage, GAME_ID, files)
+        prefix = await store_bundle(
+            container.storage, game_version_prefix(GAME_ID, 1), files
+        )
 
         if await container.games.get(GAME_ID) is None:
+            version = GameVersion(
+                id=new_id(),
+                game_id=GAME_ID,
+                version_no=1,
+                parent_id=None,
+                job_id=None,
+                change_summary="Initial version",
+                storage_prefix=prefix,
+                blueprint=BLUEPRINT,
+            )
             await container.games.add(
                 Game(
                     id=GAME_ID,
@@ -202,8 +220,11 @@ async def main() -> None:
                     blueprint_model="seed",
                     code_model="seed",
                     storage_prefix=prefix,
+                    current_version_id=version.id,
+                    current_version_no=1,
                 )
             )
+            await container.versions.add(version)
         print(f"seeded game '{GAME_ID}' (gate passed: {report.passed})")
     finally:
         await container.shutdown()

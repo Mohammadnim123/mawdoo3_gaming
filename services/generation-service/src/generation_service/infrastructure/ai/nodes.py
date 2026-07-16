@@ -106,12 +106,37 @@ class GenerationNodes:
         locale_hint = state.get("requested_locale") or (
             "ar" if analysis.detected_language in ("ar", "mixed") else "en"
         )
-        system, user = build_blueprint(state["prompt"], analysis.game_concept, locale_hint)
+        system, user = build_blueprint(
+            state["prompt"],
+            analysis.game_concept,
+            locale_hint,
+            clarifications=self._clarifications_text(state),
+        )
         blueprint, usage = await self._blueprint_llm.generate(
             "blueprint", system, user, GameBlueprint
         )
         await self._llm_log.record(state["job_id"], usage)
         return {"blueprint": blueprint}
+
+    @staticmethod
+    def _clarifications_text(state: GenerationState) -> str:
+        """Q/A lines for the design prompt. Unanswered questions fall back to
+        their default option — 'Surprise me' is just an empty answers dict."""
+        analysis = state.get("analysis")
+        if analysis is None:
+            return ""
+        questions = analysis.domain_questions()
+        if not questions:
+            return ""
+        answers = state.get("answers") or {}
+        lines = []
+        for question in questions:
+            chosen = answers.get(question.id, "").strip()
+            labels = {option.id: option.label for option in question.options}
+            answer = labels.get(chosen) or chosen or labels.get(question.default_option_id, "")
+            if answer:
+                lines.append(f"Q: {question.question}\nA: {answer}")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------ #
     # 2b. Blueprint revision (tweak mode — chat edits on an existing game)
@@ -186,8 +211,8 @@ class GenerationNodes:
         return {"background_art": background, "sprites": sprites}
 
     async def _carry_over_art(self, state: GenerationState, blueprint: GameBlueprint) -> dict:
-        """Tweak mode: reuse the published bundle's art files unchanged."""
-        prefix = game_storage_prefix(state["game_id"])
+        """Tweak mode: reuse the current version's art files unchanged."""
+        prefix = state.get("base_prefix") or game_storage_prefix(state["game_id"])
 
         async def fetch(rel_path: str) -> bytes | None:
             try:
@@ -235,7 +260,7 @@ class GenerationNodes:
         """Tweak mode: give the model the current implementation so edits stay minimal."""
         if state.get("mode") != JobKind.TWEAK:
             return ""
-        prefix = game_storage_prefix(state["game_id"])
+        prefix = state.get("base_prefix") or game_storage_prefix(state["game_id"])
         try:
             game_js = (await self._storage.get(f"{prefix}/game.js")).decode()
             game_css = (await self._storage.get(f"{prefix}/game.css")).decode()
@@ -390,5 +415,6 @@ class GenerationNodes:
     # ------------------------------------------------------------------ #
 
     async def store(self, state: GenerationState) -> dict:
-        prefix = await store_bundle(self._storage, state["game_id"], state["bundle_files"])
+        prefix = state.get("target_prefix") or game_storage_prefix(state["game_id"])
+        await store_bundle(self._storage, prefix, state["bundle_files"])
         return {"stored_prefix": prefix}

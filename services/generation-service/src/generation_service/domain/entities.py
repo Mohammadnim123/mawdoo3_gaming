@@ -22,18 +22,39 @@ def utcnow() -> datetime:
 
 def game_storage_prefix(game_id: str) -> str:
     """Canonical storage key prefix for one game's bundle. Every producer and
-    consumer of bundle keys goes through here so the layout can never drift."""
+    consumer of bundle keys goes through here so the layout can never drift.
+
+    Pre-versioning games live directly under this prefix; versioned bundles
+    live under game_version_prefix(). Both resolve through Game.storage_prefix,
+    so readers never care which era a game was built in."""
     return f"games/{game_id}"
+
+
+def game_version_prefix(game_id: str, version_no: int) -> str:
+    """Storage key prefix for one immutable version of a game's bundle.
+    Versions are never overwritten — each build lands in its own v{n}/ dir,
+    which is what makes the version tree and rollback possible."""
+    return f"{game_storage_prefix(game_id)}/v{version_no}"
 
 
 class JobStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
+    AWAITING_INPUT = "awaiting_input"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
     @classmethod
     def active(cls) -> tuple[JobStatus, ...]:
+        """Statuses that occupy a game's one-job-at-a-time slot. AWAITING_INPUT
+        counts: the creator is mid-conversation with this job."""
+        return (cls.QUEUED, cls.RUNNING, cls.AWAITING_INPUT)
+
+    @classmethod
+    def abandoned_on_restart(cls) -> tuple[JobStatus, ...]:
+        """Statuses that cannot survive a process restart (their asyncio task
+        died with the process). AWAITING_INPUT is deliberately absent — a
+        paused job holds no task and resumes from persisted state."""
         return (cls.QUEUED, cls.RUNNING)
 
 
@@ -51,17 +72,36 @@ class FailureCode(StrEnum):
     PIPELINE_TIMEOUT = "pipeline_timeout"
     GAME_NOT_FOUND = "game_not_found"
     INTERRUPTED = "interrupted"
+    CANCELLED = "cancelled"
 
 
 class PipelineStage(StrEnum):
     QUEUED = "queued"
     UNDERSTANDING = "understanding"
+    CLARIFYING = "clarifying"
     BLUEPRINT = "blueprint"
     CODE_GENERATION = "code_generation"
     VALIDATION = "validation"
     PACKAGING = "packaging"
     STORAGE = "storage"
     DONE = "done"
+
+
+class ClarifyOption(BaseModel):
+    """One tappable answer for a clarifying question."""
+
+    id: str
+    label: str
+
+
+class ClarifyQuestion(BaseModel):
+    """A clarifying question the pipeline may ask before designing (2–3 max,
+    each with a smart default so 'Surprise me' can skip the whole step)."""
+
+    id: str
+    question: str
+    options: list[ClarifyOption]
+    default_option_id: str
 
 
 class GateCheck(BaseModel):
@@ -136,7 +176,10 @@ class LlmUsage(BaseModel):
 @dataclass(slots=True)
 class Game:
     """A generated, gate-approved, stored game. The reproducibility record:
-    prompt + blueprint + template/model versions fully describe the build."""
+    prompt + blueprint + template/model versions fully describe the build.
+
+    storage_prefix always points at the *current* version's bundle; the
+    current_version_* pointers say which GameVersion row that is."""
 
     id: str
     title_en: str
@@ -150,6 +193,8 @@ class Game:
     blueprint_model: str
     code_model: str
     storage_prefix: str
+    current_version_id: str | None = None
+    current_version_no: int = 1
     created_at: datetime = field(default_factory=utcnow)
 
     def apply_blueprint(self, blueprint: GameBlueprint) -> None:
@@ -161,6 +206,22 @@ class Game:
         self.summary = blueprint.summary
         self.default_locale = blueprint.default_locale
         self.blueprint = blueprint
+
+
+@dataclass(slots=True)
+class GameVersion:
+    """One immutable published build of a game. Bundles are write-once — the
+    version tree and rollback both depend on old builds staying playable."""
+
+    id: str
+    game_id: str
+    version_no: int
+    parent_id: str | None
+    job_id: str | None
+    change_summary: str
+    storage_prefix: str
+    blueprint: GameBlueprint
+    created_at: datetime = field(default_factory=utcnow)
 
 
 @dataclass(slots=True)
@@ -186,6 +247,11 @@ class GenerationJob:
 
     kind=CREATE builds a new game from a prompt; kind=TWEAK rebuilds an
     existing game (game_id set upfront) from its blueprint + an instruction.
+
+    While paused on clarifying questions (status=AWAITING_INPUT) the job holds
+    everything a resume needs: the questions asked, the creator's answers, and
+    the understand-stage analysis (opaque JSON — the pipeline owns its shape),
+    so a resumed run never repeats the intake LLM call.
     """
 
     id: str
@@ -198,6 +264,10 @@ class GenerationJob:
     error_code: str | None = None
     error_message: str | None = None
     gate_report: GateReport | None = None
+    questions: list[ClarifyQuestion] = field(default_factory=list)
+    answers: dict[str, str] = field(default_factory=dict)
+    analysis_json: str | None = None
+    skip_clarify: bool = False
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
 
@@ -208,6 +278,7 @@ class GenerationJob:
         requested_locale: str | None,
         kind: JobKind = JobKind.CREATE,
         game_id: str | None = None,
+        skip_clarify: bool = False,
     ) -> GenerationJob:
         return cls(
             id=new_id(),
@@ -215,4 +286,5 @@ class GenerationJob:
             requested_locale=requested_locale,
             kind=kind,
             game_id=game_id,
+            skip_clarify=skip_clarify,
         )

@@ -9,12 +9,33 @@ stage, and the packaging/storage tail.
 from __future__ import annotations
 
 from generation_service.domain.entities import (
+    ClarifyOption,
+    ClarifyQuestion,
     GateCheck,
     GateReport,
     PipelineFailure,
     PipelineStage,
 )
 from generation_service.infrastructure.ai.pipeline import GenerationPipeline
+
+SAMPLE_QUESTION = ClarifyQuestion(
+    id="q_1",
+    question="What theme?",
+    options=[ClarifyOption(id="opt_1", label="Space"), ClarifyOption(id="opt_2", label="Jungle")],
+    default_option_id="opt_1",
+)
+
+
+class FakeAnalysis:
+    """Just enough of PromptAnalysis for the pipeline's clarify branch."""
+
+    def __init__(self, questions: list[ClarifyQuestion] | None = None) -> None:
+        self._questions = questions or []
+        self.game_concept = "a game"
+        self.detected_language = "en"
+
+    def domain_questions(self) -> list[ClarifyQuestion]:
+        return self._questions
 
 
 class StubNodes:
@@ -23,11 +44,16 @@ class StubNodes:
     blocking=True, which fails a check no game may ship with."""
 
     def __init__(
-        self, pass_on_attempt: int = 1, in_scope: bool = True, blocking: bool = False
+        self,
+        pass_on_attempt: int = 1,
+        in_scope: bool = True,
+        blocking: bool = False,
+        questions: list[ClarifyQuestion] | None = None,
     ) -> None:
         self._pass_on_attempt = pass_on_attempt
         self._in_scope = in_scope
         self._blocking = blocking
+        self._questions = questions or []
 
     async def understand(self, state):
         if not self._in_scope:
@@ -36,7 +62,7 @@ class StubNodes:
                     stage=PipelineStage.UNDERSTANDING, code="out_of_scope", message="no"
                 )
             }
-        return {"analysis": "analysis"}
+        return {"analysis": FakeAnalysis(self._questions)}
 
     async def design_blueprint(self, state):
         return {"blueprint": "blueprint"}
@@ -147,3 +173,53 @@ async def test_deep_review_runs_after_gate_pass():
     names = await run(pipeline, create_state())
     assert "deep_review" in names
     assert names.index("deep_review") == names.index("validate") + 1
+
+
+async def test_clarify_pauses_after_understand():
+    pipeline = GenerationPipeline(
+        StubNodes(questions=[SAMPLE_QUESTION]), max_code_retries=2, clarify_enabled=True
+    )
+    updates = {}
+
+    async def collect():
+        names = []
+        async for name, update in pipeline.astream(create_state()):
+            names.append(name)
+            updates.update(update)
+        return names
+
+    names = await collect()
+    assert names == ["understand", "await_input"]
+    assert updates["questions"] == [SAMPLE_QUESTION]
+
+
+async def test_clarify_resume_skips_intake():
+    pipeline = GenerationPipeline(
+        StubNodes(questions=[SAMPLE_QUESTION]), max_code_retries=2, clarify_enabled=True
+    )
+    state = {
+        **create_state(),
+        "resume": True,
+        "answers": {"q_1": "opt_2"},
+        "analysis": FakeAnalysis([SAMPLE_QUESTION]),
+    }
+    names = await run(pipeline, state)
+    assert "understand" not in names
+    assert names[0] == "blueprint"
+    assert names[-2:] == ["package", "store"]
+
+
+async def test_clarify_skip_flag_never_pauses():
+    pipeline = GenerationPipeline(
+        StubNodes(questions=[SAMPLE_QUESTION]), max_code_retries=2, clarify_enabled=True
+    )
+    names = await run(pipeline, {**create_state(), "skip_clarify": True})
+    assert "await_input" not in names
+    assert names[-2:] == ["package", "store"]
+
+
+async def test_clarify_no_questions_never_pauses():
+    pipeline = GenerationPipeline(StubNodes(), max_code_retries=2, clarify_enabled=True)
+    names = await run(pipeline, create_state())
+    assert "await_input" not in names
+    assert names[-2:] == ["package", "store"]

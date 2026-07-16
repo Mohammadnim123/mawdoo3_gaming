@@ -10,8 +10,10 @@ from __future__ import annotations
 from typing import Protocol
 
 from generation_service.domain.entities import (
+    ClarifyQuestion,
     Game,
     GameSummary,
+    GameVersion,
     GateReport,
     GenerationJob,
     JobStatus,
@@ -65,9 +67,28 @@ class JobRepository(Protocol):
         gate_report: GateReport | None = None,
     ) -> None: ...
 
+    async def mark_awaiting_input(
+        self, job_id: str, questions: list[ClarifyQuestion], analysis_json: str
+    ) -> None: ...
+
+    async def set_answers(self, job_id: str, answers: dict[str, str]) -> None: ...
+
     async def has_active_job_for_game(self, game_id: str) -> bool: ...
 
     async def fail_abandoned(self, error_code: str, error_message: str) -> int: ...
+
+
+class GameVersionRepository(Protocol):
+    """Catalog of immutable version bundles. Rows are append-only; 'current'
+    lives on the Game (current_version_id/no + storage_prefix)."""
+
+    async def add(self, version: GameVersion) -> None: ...
+
+    async def get(self, game_id: str, version_id: str) -> GameVersion | None: ...
+
+    async def list_for_game(self, game_id: str) -> list[GameVersion]: ...
+
+    async def max_version_no(self, game_id: str) -> int: ...
 
 
 class LlmCallLog(Protocol):
@@ -84,3 +105,5 @@ class JobEventStore(Protocol):
     async def append(self, job_id: str, event: JobEvent) -> None: ...
 
     async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]: ...
+
+    async def last_seq(self, job_id: str) -> int: ...

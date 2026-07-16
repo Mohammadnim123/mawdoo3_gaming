@@ -21,6 +21,20 @@ class GenerationState(TypedDict, total=False):
     prompt: str
     requested_locale: str | None
 
+    # Immutable-version targeting: where this build's bundle lands
+    # (games/{id}/v{n}) and, for tweaks, where the current live bundle is
+    # read from (art carry-over + previous-code context).
+    target_prefix: str
+    base_prefix: str
+
+    # Clarifying-questions control. skip_clarify suppresses the pause
+    # ("Surprise me" / API opt-out); resume=True re-enters the pipeline after
+    # answers with the persisted analysis already in state (intake is never
+    # re-run); answers maps question id -> chosen option id / free text.
+    skip_clarify: bool
+    resume: bool
+    answers: dict[str, str]
+
     # Tweak-mode inputs (mode == JobKind.TWEAK rebuilds an existing game)
     mode: JobKind
     tweak_instruction: str
@@ -47,7 +61,12 @@ class GenerationState(TypedDict, total=False):
 
 
 def initial_state(
-    job_id: str, game_id: str, prompt: str, requested_locale: str | None
+    job_id: str,
+    game_id: str,
+    prompt: str,
+    requested_locale: str | None,
+    target_prefix: str = "",
+    skip_clarify: bool = False,
 ) -> GenerationState:
     return GenerationState(
         job_id=job_id,
@@ -55,6 +74,8 @@ def initial_state(
         prompt=prompt,
         requested_locale=requested_locale,
         mode=JobKind.CREATE,
+        target_prefix=target_prefix,
+        skip_clarify=skip_clarify,
         code_attempts=0,
     )
 
@@ -64,6 +85,8 @@ def tweak_state(
     game_id: str,
     instruction: str,
     base_blueprint: GameBlueprint,
+    target_prefix: str = "",
+    base_prefix: str = "",
 ) -> GenerationState:
     return GenerationState(
         job_id=job_id,
@@ -73,5 +96,7 @@ def tweak_state(
         mode=JobKind.TWEAK,
         tweak_instruction=instruction,
         base_blueprint=base_blueprint,
+        target_prefix=target_prefix,
+        base_prefix=base_prefix,
         code_attempts=0,
     )

@@ -21,14 +21,21 @@ class StartGenerationUseCase:
         self._runner = runner
         self._run_generation = run_generation
 
-    async def execute(self, prompt: str, requested_locale: str | None) -> GenerationJob:
+    async def execute(
+        self,
+        prompt: str,
+        requested_locale: str | None,
+        skip_clarify: bool = False,
+    ) -> GenerationJob:
         prompt = prompt.strip()
         if len(prompt) < PROMPT_MIN_CHARS:
             raise InvalidPromptError("prompt is too short to describe a game")
         if len(prompt) > PROMPT_MAX_CHARS:
             raise InvalidPromptError(f"prompt exceeds {PROMPT_MAX_CHARS} characters")
 
-        job = GenerationJob.create(prompt=prompt, requested_locale=requested_locale)
+        job = GenerationJob.create(
+            prompt=prompt, requested_locale=requested_locale, skip_clarify=skip_clarify
+        )
         await self._jobs.add(job)
         self._runner.submit(self._run_generation.execute(job), name=f"generation:{job.id}")
         return job

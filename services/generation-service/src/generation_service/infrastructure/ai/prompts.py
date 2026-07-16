@@ -31,6 +31,13 @@ Rules:
   game_concept may be left empty in that case.
 - game_concept is always written in English and must be specific enough to design from.
 - detected_language is 'ar', 'en', or 'mixed'; use 'other' for any other language.
+- clarifying_questions: when (and ONLY when) the prompt leaves a choice open that would
+  change the game a player sees — its theme/setting, difficulty feel, or core mechanic
+  variant — ask 1-3 short one-tap questions about it. Each question: 2-4 short options
+  (a few words each), written in the SAME language as the prompt, plus the index of the
+  best default so an undecided creator can skip. A clear, specific prompt gets ZERO
+  questions — never ask about things you can decide well yourself, and never ask about
+  anything technical (rendering, code, engine).
 """
 
 def build_understand(prompt: str) -> tuple[str, str]:
@@ -122,11 +129,19 @@ Requirements:
   nested under a wrapper key such as "blueprint".
 """
 
-def build_blueprint(prompt: str, game_concept: str, locale_hint: str) -> tuple[str, str]:
+def build_blueprint(
+    prompt: str, game_concept: str, locale_hint: str, clarifications: str = ""
+) -> tuple[str, str]:
     system = BLUEPRINT_SYSTEM.replace("{locale_hint}", locale_hint)
+    clarify_section = ""
+    if clarifications:
+        clarify_section = (
+            "\n\nThe creator answered clarifying questions — these choices are firm "
+            f"design requirements:\n{clarifications}\n"
+        )
     user = (
-        f"Original user prompt:\n{prompt}\n\nNormalized game concept:\n{game_concept}\n\n"
-        "Design the blueprint now."
+        f"Original user prompt:\n{prompt}\n\nNormalized game concept:\n{game_concept}"
+        f"{clarify_section}\n\nDesign the blueprint now."
     )
     return system, user
 

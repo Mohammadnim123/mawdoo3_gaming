@@ -19,12 +19,26 @@ from generation_service.domain.constraints import (
     PROMPT_MAX_CHARS,
     PROMPT_MIN_CHARS,
 )
-from generation_service.domain.entities import Game, GameSummary, GenerationJob
+from generation_service.domain.entities import (
+    ClarifyQuestion,
+    Game,
+    GameSummary,
+    GameVersion,
+    GenerationJob,
+    JobStatus,
+)
 
 
 class ErrorInfo(BaseModel):
     code: str
     message: str
+
+
+class GenerationOptions(BaseModel):
+    skip_questions: bool = Field(
+        default=False,
+        description="Skip the clarifying-questions pause and design with smart defaults",
+    )
 
 
 class GenerationCreateRequest(BaseModel):
@@ -35,6 +49,15 @@ class GenerationCreateRequest(BaseModel):
     )
     locale: Literal["ar", "en"] | None = Field(
         default=None, description="Force the game's default locale (otherwise auto-detected)"
+    )
+    options: GenerationOptions = Field(default_factory=GenerationOptions)
+
+
+class AnswersRequest(BaseModel):
+    answers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Question id -> chosen option id (or short free text). "
+        "Empty = accept every default ('Surprise me').",
     )
 
 
@@ -53,6 +76,7 @@ class GenerationResponse(BaseModel):
     prompt: str
     game_id: str | None
     error: ErrorInfo | None
+    questions: list[ClarifyQuestion] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -68,6 +92,7 @@ class GenerationResponse(BaseModel):
             prompt=job.prompt,
             game_id=job.game_id,
             error=error,
+            questions=job.questions if job.status == JobStatus.AWAITING_INPUT else [],
             created_at=job.created_at,
             updated_at=job.updated_at,
         )
@@ -111,9 +136,58 @@ class GamesListResponse(BaseModel):
     offset: int
 
 
-def _play_url(game: Game | GameSummary, settings: Settings) -> str:
+class GameVersionResponse(BaseModel):
+    id: str
+    version_no: int
+    parent_id: str | None
+    change_summary: str
+    play_url: str
+    created_at: datetime
+
+    @classmethod
+    def from_entity(cls, version: GameVersion, settings: Settings) -> GameVersionResponse:
+        return cls(
+            id=version.id,
+            version_no=version.version_no,
+            parent_id=version.parent_id,
+            change_summary=version.change_summary,
+            play_url=play_url_for_prefix(version.storage_prefix, settings),
+            created_at=version.created_at,
+        )
+
+
+class GameVersionsListResponse(BaseModel):
+    items: list[GameVersionResponse]
+    current_version_id: str | None
+
+
+class VersionSourceResponse(BaseModel):
+    version_id: str
+    source_html: str
+    game_js: str = ""
+    game_css: str = ""
+
+
+class RollbackRequest(BaseModel):
+    version_id: str = Field(min_length=1)
+
+
+class RollbackResponse(BaseModel):
+    version_id: str
+    version_no: int
+    play_url: str
+
+
+def play_url_for_prefix(storage_prefix: str, settings: Settings) -> str:
+    """Compose a bundle URL from its storage prefix. The local play route
+    mirrors the storage layout under /g/ (games/{id}[/v{n}] -> /g/{id}[/v{n}]),
+    so versioned and legacy prefixes both resolve without special cases."""
     cdn = settings.storage.cdn_base_url.rstrip("/")
     if cdn:
-        return f"{cdn}/{game.storage_prefix}/index.html"
+        return f"{cdn}/{storage_prefix}/index.html"
     base = settings.app.public_base_url.rstrip("/")
-    return f"{base}/g/{game.id}/index.html"
+    return f"{base}/g/{storage_prefix.removeprefix('games/')}/index.html"
+
+
+def _play_url(game: Game | GameSummary, settings: Settings) -> str:
+    return play_url_for_prefix(game.storage_prefix, settings)

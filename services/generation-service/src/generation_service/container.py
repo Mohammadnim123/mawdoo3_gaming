@@ -11,9 +11,14 @@ import logging
 from generation_service.application.events import JobEventBus
 from generation_service.application.job_runner import BackgroundJobRunner
 from generation_service.application.use_cases import (
+    AnswerQuestionsUseCase,
+    CancelGenerationUseCase,
     GetGameUseCase,
     GetGenerationUseCase,
+    GetVersionSourceUseCase,
     ListGamesUseCase,
+    ListVersionsUseCase,
+    RollbackUseCase,
     RunGenerationUseCase,
     StartGenerationUseCase,
     StartTweakUseCase,
@@ -31,6 +36,7 @@ from generation_service.infrastructure.packaging.assembler import (
 from generation_service.infrastructure.persistence import (
     Database,
     SqliteGameRepository,
+    SqliteGameVersionRepository,
     SqliteJobEventStore,
     SqliteJobRepository,
     SqliteLlmCallLog,
@@ -53,6 +59,7 @@ class Container:
         await self.database.connect()
         self.games = SqliteGameRepository(self.database)
         self.jobs = SqliteJobRepository(self.database)
+        self.versions = SqliteGameVersionRepository(self.database)
         self.llm_log = SqliteLlmCallLog(self.database)
         self.job_events = SqliteJobEventStore(self.database)
         # In-process pub/sub for live SSE (API + workers share this process).
@@ -126,6 +133,7 @@ class Container:
             nodes,
             max_code_retries=s.pipeline.generation_max_code_retries,
             deep_review_enabled=s.features.feature_llm_review,
+            clarify_enabled=s.features.feature_clarify,
         )
 
         # Application
@@ -136,6 +144,7 @@ class Container:
             pipeline=self.pipeline,
             jobs=self.jobs,
             games=self.games,
+            versions=self.versions,
             template_version=template.version,
             blueprint_model=s.ai.blueprint_model,
             code_model=s.ai.code_model,
@@ -153,9 +162,23 @@ class Container:
             run_generation=self.run_generation,
             enabled=s.features.feature_tweaks_api,
         )
+        self.answer_questions = AnswerQuestionsUseCase(
+            jobs=self.jobs, runner=self.job_runner, run_generation=self.run_generation
+        )
+        self.cancel_generation = CancelGenerationUseCase(
+            jobs=self.jobs,
+            runner=self.job_runner,
+            event_store=self.job_events,
+            event_bus=self.job_event_bus,
+        )
         self.get_generation = GetGenerationUseCase(self.jobs)
         self.list_games = ListGamesUseCase(self.games)
         self.get_game = GetGameUseCase(self.games)
+        self.list_versions = ListVersionsUseCase(self.games, self.versions)
+        self.get_version_source = GetVersionSourceUseCase(
+            self.games, self.versions, self.storage
+        )
+        self.rollback = RollbackUseCase(self.games, self.versions, self.jobs)
 
         logger.info(
             "container ready — template v%s, provider=%s, storage=%s",

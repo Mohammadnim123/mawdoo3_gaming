@@ -137,6 +137,7 @@ class FeatureFlags(_Base):
     feature_llm_review: bool = True  # deep logic review in the gate (kill switch)
     feature_background_art: bool = True  # painted bg.png backdrop (needs GEMINI_API_KEY)
     feature_tweaks_api: bool = True  # chat-edit an existing game (kill switch)
+    feature_clarify: bool = True  # pause on clarifying questions for ambiguous prompts
     feature_share_links: bool = False
 
 

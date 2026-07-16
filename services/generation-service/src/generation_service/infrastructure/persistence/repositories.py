@@ -8,8 +8,10 @@ from datetime import datetime
 from generation_service.domain.blueprint import GameBlueprint
 from generation_service.domain.events import JobEvent
 from generation_service.domain.entities import (
+    ClarifyQuestion,
     Game,
     GameSummary,
+    GameVersion,
     GateReport,
     GenerationJob,
     JobKind,
@@ -34,8 +36,9 @@ class SqliteGameRepository:
             """
             INSERT INTO games (id, title_en, title_ar, genre, summary, default_locale,
                                prompt, blueprint_json, template_version, blueprint_model,
-                               code_model, storage_prefix, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               code_model, storage_prefix, current_version_id,
+                               current_version_no, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 game.id,
@@ -50,6 +53,8 @@ class SqliteGameRepository:
                 game.blueprint_model,
                 game.code_model,
                 game.storage_prefix,
+                game.current_version_id,
+                game.current_version_no,
                 _iso(game.created_at),
             ),
         )
@@ -59,7 +64,8 @@ class SqliteGameRepository:
             """
             UPDATE games SET title_en = ?, title_ar = ?, genre = ?, summary = ?,
                              default_locale = ?, blueprint_json = ?, template_version = ?,
-                             blueprint_model = ?, code_model = ?
+                             blueprint_model = ?, code_model = ?, storage_prefix = ?,
+                             current_version_id = ?, current_version_no = ?
             WHERE id = ?
             """,
             (
@@ -72,6 +78,9 @@ class SqliteGameRepository:
                 game.template_version,
                 game.blueprint_model,
                 game.code_model,
+                game.storage_prefix,
+                game.current_version_id,
+                game.current_version_no,
                 game.id,
             ),
         )
@@ -132,6 +141,72 @@ class SqliteGameRepository:
             blueprint_model=row["blueprint_model"],
             code_model=row["code_model"],
             storage_prefix=row["storage_prefix"],
+            current_version_id=row["current_version_id"],
+            current_version_no=row["current_version_no"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+
+class SqliteGameVersionRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def add(self, version: GameVersion) -> None:
+        await self._db.execute_write(
+            """
+            INSERT INTO game_versions (id, game_id, version_no, parent_id, job_id,
+                                       change_summary, storage_prefix, blueprint_json,
+                                       created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                version.id,
+                version.game_id,
+                version.version_no,
+                version.parent_id,
+                version.job_id,
+                version.change_summary,
+                version.storage_prefix,
+                version.blueprint.model_dump_json(),
+                _iso(version.created_at),
+            ),
+        )
+
+    async def get(self, game_id: str, version_id: str) -> GameVersion | None:
+        cursor = await self._db.connection.execute(
+            "SELECT * FROM game_versions WHERE game_id = ? AND id = ?",
+            (game_id, version_id),
+        )
+        row = await cursor.fetchone()
+        return self._to_entity(row) if row else None
+
+    async def list_for_game(self, game_id: str) -> list[GameVersion]:
+        cursor = await self._db.connection.execute(
+            "SELECT * FROM game_versions WHERE game_id = ? ORDER BY version_no",
+            (game_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._to_entity(row) for row in rows]
+
+    async def max_version_no(self, game_id: str) -> int:
+        cursor = await self._db.connection.execute(
+            "SELECT COALESCE(MAX(version_no), 0) AS n FROM game_versions WHERE game_id = ?",
+            (game_id,),
+        )
+        row = await cursor.fetchone()
+        return int(row["n"]) if row else 0
+
+    @staticmethod
+    def _to_entity(row) -> GameVersion:
+        return GameVersion(
+            id=row["id"],
+            game_id=row["game_id"],
+            version_no=row["version_no"],
+            parent_id=row["parent_id"],
+            job_id=row["job_id"],
+            change_summary=row["change_summary"],
+            storage_prefix=row["storage_prefix"],
+            blueprint=GameBlueprint.model_validate_json(row["blueprint_json"]),
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 
@@ -145,8 +220,9 @@ class SqliteJobRepository:
             """
             INSERT INTO generation_jobs (id, status, stage, kind, prompt, requested_locale,
                                          game_id, error_code, error_message,
-                                         gate_report_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                         gate_report_json, questions_json, answers_json,
+                                         analysis_json, skip_clarify, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job.id,
@@ -159,6 +235,10 @@ class SqliteJobRepository:
                 job.error_code,
                 job.error_message,
                 job.gate_report.model_dump_json() if job.gate_report else None,
+                json.dumps([q.model_dump() for q in job.questions]) if job.questions else None,
+                json.dumps(job.answers) if job.answers else None,
+                job.analysis_json,
+                1 if job.skip_clarify else 0,
                 _iso(job.created_at),
                 _iso(job.updated_at),
             ),
@@ -209,6 +289,27 @@ class SqliteJobRepository:
             ),
         )
 
+    async def mark_awaiting_input(
+        self, job_id: str, questions: list[ClarifyQuestion], analysis_json: str
+    ) -> None:
+        await self._touch(
+            job_id,
+            "status = ?, stage = ?, questions_json = ?, analysis_json = ?",
+            (
+                JobStatus.AWAITING_INPUT.value,
+                PipelineStage.CLARIFYING.value,
+                json.dumps([q.model_dump() for q in questions]),
+                analysis_json,
+            ),
+        )
+
+    async def set_answers(self, job_id: str, answers: dict[str, str]) -> None:
+        await self._touch(
+            job_id,
+            "answers_json = ?, status = ?",
+            (json.dumps(answers), JobStatus.QUEUED.value),
+        )
+
     async def has_active_job_for_game(self, game_id: str) -> bool:
         placeholders = ", ".join("?" for _ in JobStatus.active())
         cursor = await self._db.connection.execute(
@@ -219,9 +320,11 @@ class SqliteJobRepository:
         return await cursor.fetchone() is not None
 
     async def fail_abandoned(self, error_code: str, error_message: str) -> int:
-        """Fail every job still queued/running — called once at startup, when
-        any such row is by definition a job the previous process lost."""
-        placeholders = ", ".join("?" for _ in JobStatus.active())
+        """Fail every job whose asyncio task died with the previous process —
+        queued/running only. A job paused on clarifying questions holds no
+        task; it stays AWAITING_INPUT and resumes from persisted state."""
+        statuses = JobStatus.abandoned_on_restart()
+        placeholders = ", ".join("?" for _ in statuses)
         return await self._db.execute_write(
             f"UPDATE generation_jobs SET status = ?, error_code = ?, error_message = ?, "
             f"updated_at = ? WHERE status IN ({placeholders})",
@@ -230,7 +333,7 @@ class SqliteJobRepository:
                 error_code,
                 error_message,
                 _iso(utcnow()),
-                *[s.value for s in JobStatus.active()],
+                *[s.value for s in statuses],
             ),
         )
 
@@ -257,6 +360,14 @@ class SqliteJobRepository:
                 if row["gate_report_json"]
                 else None
             ),
+            questions=(
+                [ClarifyQuestion.model_validate(q) for q in json.loads(row["questions_json"])]
+                if row["questions_json"]
+                else []
+            ),
+            answers=json.loads(row["answers_json"]) if row["answers_json"] else {},
+            analysis_json=row["analysis_json"],
+            skip_clarify=bool(row["skip_clarify"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
@@ -327,3 +438,13 @@ class SqliteJobEventStore:
             JobEvent(seq=row["seq"], event=row["event"], data=json.loads(row["data_json"]))
             for row in rows
         ]
+
+    async def last_seq(self, job_id: str) -> int:
+        """Highest persisted seq for a job — the resume point for an emitter
+        picking up after a pause (seqs must stay monotonic across the gap)."""
+        cursor = await self._db.connection.execute(
+            "SELECT COALESCE(MAX(seq), 0) AS n FROM job_events WHERE job_id = ?",
+            (job_id,),
+        )
+        row = await cursor.fetchone()
+        return int(row["n"]) if row else 0

@@ -40,8 +40,25 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
     error_code       TEXT,
     error_message    TEXT,
     gate_report_json TEXT,
+    questions_json   TEXT,
+    answers_json     TEXT,
+    analysis_json    TEXT,
+    skip_clarify     INTEGER NOT NULL DEFAULT 0,
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS game_versions (
+    id              TEXT PRIMARY KEY,
+    game_id         TEXT NOT NULL,
+    version_no      INTEGER NOT NULL,
+    parent_id       TEXT,
+    job_id          TEXT,
+    change_summary  TEXT NOT NULL DEFAULT '',
+    storage_prefix  TEXT NOT NULL,
+    blueprint_json  TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    UNIQUE (game_id, version_no)
 );
 
 CREATE TABLE IF NOT EXISTS llm_calls (
@@ -67,6 +84,7 @@ CREATE TABLE IF NOT EXISTS job_events (
 CREATE INDEX IF NOT EXISTS idx_games_created_at ON games (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_job_id ON llm_calls (job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_game_status ON generation_jobs (game_id, status);
+CREATE INDEX IF NOT EXISTS idx_game_versions_game ON game_versions (game_id, version_no);
 """
 
 # Additive, idempotent migrations for databases created before a column
@@ -74,11 +92,40 @@ CREATE INDEX IF NOT EXISTS idx_jobs_game_status ON generation_jobs (game_id, sta
 _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
     "generation_jobs": {
         "kind": "TEXT NOT NULL DEFAULT 'create'",
+        "questions_json": "TEXT",
+        "answers_json": "TEXT",
+        "analysis_json": "TEXT",
+        "skip_clarify": "INTEGER NOT NULL DEFAULT 0",
     },
     "games": {
         "summary": "TEXT NOT NULL DEFAULT ''",
+        "current_version_id": "TEXT",
+        "current_version_no": "INTEGER NOT NULL DEFAULT 1",
     },
 }
+
+# Games created before immutable versions existed have their bundle directly
+# under games/{id} and no version rows. Synthesize a v1 row per such game so
+# every consumer (version list, rollback, source view) sees one uniform world.
+_BACKFILL_V1_VERSIONS = """
+INSERT INTO game_versions (id, game_id, version_no, parent_id, job_id,
+                           change_summary, storage_prefix, blueprint_json, created_at)
+SELECT lower(hex(randomblob(6))), g.id, 1, NULL, NULL,
+       'Initial version', g.storage_prefix, g.blueprint_json, g.created_at
+FROM games g
+WHERE NOT EXISTS (SELECT 1 FROM game_versions v WHERE v.game_id = g.id)
+"""
+
+_BACKFILL_CURRENT_POINTERS = """
+UPDATE games SET
+    current_version_id = (SELECT v.id FROM game_versions v
+                          WHERE v.game_id = games.id
+                          ORDER BY v.version_no DESC LIMIT 1),
+    current_version_no = (SELECT v.version_no FROM game_versions v
+                          WHERE v.game_id = games.id
+                          ORDER BY v.version_no DESC LIMIT 1)
+WHERE current_version_id IS NULL
+"""
 
 
 class Database:
@@ -128,6 +175,8 @@ class Database:
                     await self._conn.execute(
                         f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"
                     )
+        await self._conn.execute(_BACKFILL_V1_VERSIONS)
+        await self._conn.execute(_BACKFILL_CURRENT_POINTERS)
 
     async def close(self) -> None:
         if self._conn is not None:
