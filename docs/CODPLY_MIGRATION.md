@@ -198,8 +198,8 @@ gate→package→store` pipeline:
 
 ## 9. Build status (2026-07-16, second pass — previously-deferred items now shipped)
 
-**All previously-deferred work has landed.** 141 automated tests green
-(94 generation-service + 47 Django) + live smoke + a **real-LLM end-to-end
+**All previously-deferred work has landed.** 149 automated tests green
+(100 generation-service + 49 Django) + live smoke + a **real-LLM end-to-end
 smoke** (create → v1 → chat edit → v2, both playable → source view → rollback
 → publish, `/g/starcatcher`). See docs/CUTOVER.md for the parity scorecard.
 
@@ -248,7 +248,7 @@ make setup                 # venvs + deps + npm install + CSS build + migrate (s
 make dev-service           # engine  :8000   (needs OPENROUTER_API_KEY/ANTHROPIC for real generation)
 make dev-cdn               # games origin :8002
 make dev-web               # web app :8001
-make test                  # 141 tests (engine + web)
+make test                  # 149 tests (engine + web)
 make build-web             # rebuild design-system CSS + React islands
 # island dev loop: cd apps/web-client/frontend && npx vite build --watch
 ```

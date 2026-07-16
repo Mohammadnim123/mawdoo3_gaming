@@ -70,9 +70,9 @@ Legend: ✅ shipped & verified · 🟡 shipped with a documented difference · �
 
 ## 2. Verification evidence
 
-- **141 automated tests green**: 94 engine (incl. clarify pause/resume/cancel,
+- **149 automated tests green**: 100 engine (incl. clarify pause/resume/cancel,
   immutable versions/rollback/source, restart semantics, seq continuity) +
-  47 Django (incl. answers/cancel proxies, versions JSON, rollback pointer
+  49 Django (incl. answers/cancel proxies, versions JSON, rollback pointer
   flip, feed.json, island props).
 - **Live smoke** (all three dev servers): home + overlay island wiring,
   feed.json, static island bundles, signup/login, create → studio island
