@@ -196,7 +196,33 @@ gate→package→store` pipeline:
 
 ---
 
-## 9. Build status (2026-07-16)
+## 9. Build status (2026-07-16, second pass — previously-deferred items now shipped)
+
+**All previously-deferred work has landed.** 141 automated tests green
+(94 generation-service + 47 Django) + live smoke + a **real-LLM end-to-end
+smoke** (create → v1 → chat edit → v2, both playable → source view → rollback
+→ publish, `/g/starcatcher`). See docs/CUTOVER.md for the parity scorecard.
+
+- **Engine clarifying-questions** — pausable/resumable pipeline
+  (`awaiting_input`, persisted questions/analysis/answers, SSE `questions`
+  event, seq-continuous resume, `POST /answers`, `POST /cancel`,
+  `FEATURE_CLARIFY`; paused jobs survive restarts).
+- **Engine immutable versions** — every build stored under `games/{id}/v{n}`;
+  `GET /versions`, `GET /versions/{vid}/source`, `POST /rollback` (pointer
+  flip + blueprint restore); startup backfills v1 rows for legacy games.
+- **React islands (D1 as decided)** — Vite build (`frontend/`, two stable
+  entries in `games/static/games/dist/islands/`): the **workspace island**
+  (live SSE timeline, ClarifyCards, stop, in-place chat edits, Game/Code/
+  Versions tabs, CodeMirror source view, VersionTree preview/rollback,
+  sandboxed GamePlayer w/ watchdog+fullscreen+console) and the **overlay
+  island** (TikTok-style vertical feed over `/feed.json`, swipe/arrows/rail,
+  infinite paging, like/save, history-synced URLs) + in-place player upgrade
+  on game pages. The interim vanilla-JS workspace was removed.
+- **Django** — answers/cancel proxies, engine version catalog mirrored on
+  finalize (real version ids + immutable per-version play_urls), owner
+  versions/source/rollback endpoints, `/feed.json`.
+
+### Original P0–P4 record (first pass)
 
 **Shipped & verified** on `feat/codply-migration` — 116 automated tests green
 (79 generation-service + 37 Django) + live end-to-end smoke of all servers:
@@ -222,18 +248,15 @@ make setup                 # venvs + deps + npm install + CSS build + migrate (s
 make dev-service           # engine  :8000   (needs OPENROUTER_API_KEY/ANTHROPIC for real generation)
 make dev-cdn               # games origin :8002
 make dev-web               # web app :8001
-make test                  # 116 tests (engine + web)
-make build-web             # recompile design-system CSS after template/class changes
+make test                  # 141 tests (engine + web)
+make build-web             # rebuild design-system CSS + React islands
+# island dev loop: cd apps/web-client/frontend && npx vite build --watch
 ```
 DB: SQLite dev by default (`apps/web-client/var/codply.sqlite3`); set `POSTGRES_DB` (+`POSTGRES_*`)
 to switch to Postgres. Redis not required in dev (SSE uses in-process pub/sub).
 
-### Deferred (documented, not blocking a working product)
-- **Engine clarifying-questions** (pausable/resumable pipeline) — invasive + needs a live LLM key to
-  verify pause/resume; the Django `awaiting_input` plumbing is ready when the engine emits `questions`.
-- **True engine-level immutable version bundles** (versioned CDN storage paths) — the Django
-  `GameVersion` catalog + version list UX already exist; the engine still replaces bundles in place on tweak.
-- **React-island upgrade + TikTok overlay/vertical feed** — the interactive surfaces are currently
-  server-rendered + vanilla-JS (EventSource). The server contract (`/studio/jobs/<id>/stream` SSE +
-  `/status` finalize JSON) is island-ready, so this is a drop-in later with no backend change.
-- **Full production cutover / retire Codply** — after the above + a real generation smoke with keys.
+### Remaining before production cutover (see docs/CUTOVER.md §3)
+Infra/env only: Postgres + Redis + object storage/CDN, `SERVICE_TOKEN`,
+real OAuth/email/PSP secrets, DNS/branding flip, then retire Codply.
+Deliberate product differences vs Codply are recorded in docs/CUTOVER.md §4
+(read-only Code view, no live draft stream, no screenshot attachments).
