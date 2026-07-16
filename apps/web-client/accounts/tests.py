@@ -45,7 +45,8 @@ class AuthFlowTests(TestCase):
             "mode": "login", "email": "x@y.com", "password": "rightpass1",
             "next": "https://evil.example/",
         })
-        self.assertEqual(r.headers["Location"], "/")
+        # safeNext parity: rejected targets fall back to /create.
+        self.assertEqual(r.headers["Location"], "/create")
 
     def test_me_requires_login(self):
         r = self.client.get("/me")
@@ -66,3 +67,54 @@ class AuthFlowTests(TestCase):
         r = self.client.post("/logout")
         self.assertEqual(r.status_code, 302)
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+class AuthIslandPageTests(TestCase):
+    """The auth pages render the React auth island with the right screen."""
+
+    def assert_island(self, path: str, screen: str):
+        r = self.client.get(path)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="auth-island"')
+        self.assertContains(r, 'id="auth-island-props"')
+        self.assertContains(r, f'"screen": "{screen}"')
+        self.assertContains(r, "dist/islands/auth.js")
+
+    def test_login_page_mounts_island(self):
+        self.assert_island("/login", "login")
+
+    def test_forgot_page_mounts_island(self):
+        self.assert_island("/forgot-password", "forgot")
+
+    def test_reset_page_mounts_island(self):
+        self.assert_island("/reset-password?token=abc123", "reset")
+
+    def test_verify_page_mounts_island_without_redeeming(self):
+        u = User.objects.create_user(email="v@w.com", password="pass12345")
+        from .models import LoginToken
+
+        token, raw = LoginToken.issue(u.email, LoginToken.Purpose.LOGIN, user=u)
+        self.assert_island(f"/auth/verify?token={raw}", "verify")
+        # GET must not burn the single-use token — the island redeems it
+        # client-side via POST /api/v1/auth/verify.
+        token.refresh_from_db()
+        self.assertIsNone(token.used_at)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_callback_page_mounts_island(self):
+        self.assert_island("/auth/callback?code=nope", "callback")
+
+    def test_legacy_forgot_redirects(self):
+        r = self.client.get("/auth/forgot")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/forgot-password")
+
+    def test_legacy_reset_redirects_with_token_query(self):
+        r = self.client.get("/auth/reset/tok-123")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/reset-password?token=tok-123")
+
+    def test_oauth_start_lands_on_login_error(self):
+        r = self.client.get("/auth/oauth/google/start")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/login?error=oauth")

@@ -8,11 +8,10 @@ from django.db.models import Sum
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-
-from games.models import Game, GameStatus
+from games.models import GameStatus
 
 from . import services
-from .models import CreatorEarning, CreditLedger, PayoutRequest, Subscription
+from .models import CreditLedger, Subscription
 
 
 @login_required(login_url="/login")

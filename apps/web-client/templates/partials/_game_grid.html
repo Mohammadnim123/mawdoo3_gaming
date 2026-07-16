@@ -1,5 +1,5 @@
 {% if items %}
-  <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+  <div class="fp-game-grid">
     {% for game in items %}{% include "partials/_game_card.html" %}{% endfor %}
   </div>
 {% else %}

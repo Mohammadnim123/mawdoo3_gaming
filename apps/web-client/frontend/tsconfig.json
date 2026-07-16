@@ -9,7 +9,17 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@codply/ui": ["./src/vendor/codply-ui/index.ts"],
+      "@codply/game-runtime": ["./src/vendor/game-runtime/index.ts"],
+      "@codply/contracts": ["./src/vendor/contracts/index.ts"],
+      "next/link": ["./src/next-shim/link.tsx"],
+      "next/navigation": ["./src/next-shim/navigation.ts"],
+      "next/image": ["./src/next-shim/image.tsx"],
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src/islands"]
+  "include": ["src"]
 }

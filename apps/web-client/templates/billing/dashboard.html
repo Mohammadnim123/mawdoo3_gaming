@@ -1,29 +1,20 @@
 {% extends "base.html" %}
+{% load static %}
+{# /dashboard — the creator-dashboard island (reference app/dashboard/page.tsx):
+   overview stats, per-game analytics, payouts. The view keeps its
+   @login_required gate. Private surface → noindex (reference seo.noindex). #}
 {% block title %}{{ t.nav_dashboard }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<h1 class="fp-title-page mb-6 text-ink">{{ t.nav_dashboard }}</h1>
-
-<div class="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-  {% for label, value in totals.items %}
-    <div class="fp-card p-4">
-      <div class="text-2xl font-bold text-ink">{{ value }}</div>
-      <div class="text-xs uppercase tracking-wide text-ink-muted">{{ label }}</div>
-    </div>
-  {% endfor %}
-</div>
-
-<div class="mb-8 fp-card p-5">
-  <div class="flex items-center justify-between">
-    <div>
-      <div class="text-sm text-ink-muted">Earnings</div>
-      <div class="fp-title-section text-ink">{{ earned_total }}¢</div>
-    </div>
-    <form method="post" action="/account/billing/checkout">{% csrf_token %}
-      <span class="text-xs text-ink-muted">Payouts open at 1000¢</span>
-    </form>
+<div id="dashboard-island">
+  {# Server skeleton mirroring DashboardScreen's mePending state. #}
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-8" aria-hidden="true">
+    <div class="fp-pulse h-10 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-48 w-full rounded-2xl bg-surface-2"></div>
   </div>
 </div>
-
-<h2 class="fp-title-section mb-3 text-ink">{{ t.nav_my_games }}</h2>
-{% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/dashboard.js' %}"></script>
 {% endblock %}

@@ -12,7 +12,6 @@ from generation_service.domain.entities import (
     ClarifyOption,
     ClarifyQuestion,
     GenerationJob,
-    JobStatus,
 )
 from generation_service.domain.events import JobEvent
 

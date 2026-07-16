@@ -1,16 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Privacy · {{ site_name }}{% endblock %}
-{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-10{% endblock %}
+{% load static %}
+{% block title %}{{ meta_title }} · {{ site_name }}{% endblock %}
+{% block description %}{{ meta_description }}{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<article class="prose-invert grid gap-4 text-ink-secondary">
-  <h1 class="fp-title-page text-ink">Privacy Policy</h1>
-  <p>{{ site_name }} lets you turn ideas into playable browser games. This page explains, in plain language, what we collect and why.</p>
-  <h2 class="fp-title-section text-ink">What we store</h2>
-  <p>Your account (email, handle, display name), the games you create and their versions, and engagement you produce (plays, likes, comments, follows). Generated games are served from an isolated, sandboxed origin.</p>
-  <h2 class="fp-title-section text-ink">Prompts &amp; generation</h2>
-  <p>Prompts you submit are sent to our generation service to build your game. We keep them associated with your game for reproducibility and editing.</p>
-  <h2 class="fp-title-section text-ink">Your choices</h2>
-  <p>You control the visibility of each game (public, unlisted, private) and can delete your games. Contact us to remove your account.</p>
-  <p class="text-sm text-ink-muted">This is a product policy for the platform, not legal advice.</p>
-</article>
+{# React legal-document reader (LegalPage slug="privacy") — full bilingual #}
+{# content ships in the island bundle; locale comes from <html lang>. #}
+{{ island_props|json_script:"legal-island-props" }}
+<div id="legal-island">
+  <div class="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12">
+    <h1 class="fp-title-hero font-bold text-ink">{{ meta_title }}</h1>
+    <p class="mt-2 max-w-2xl text-base text-ink-secondary sm:text-lg">{{ meta_description }}</p>
+    <div class="fp-card mt-8 flex min-h-[30vh] items-center justify-center p-6 text-sm text-ink-muted">
+      <span class="fp-shimmer">{{ t.loading }}</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/legal.js' %}"></script>
 {% endblock %}

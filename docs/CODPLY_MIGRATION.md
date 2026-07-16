@@ -1,5 +1,18 @@
 # Codply Migration — Master Plan
 
+> **2026-07-16, third pass — PIXEL-PARITY REBUILD (supersedes D1's "islands
+> only for workspace/player").** The user-facing layer is now a verbatim port
+> of Codply's React screens: Django serves Codply's exact JSON contract at
+> `/api/v1/*` (new `api` app) and renders SEO heads + chrome shells; every
+> page body is a ported Codply component mounted as an island (15 entries).
+> Codply's `@codply/{ui,game-runtime,contracts}` are vendored under
+> `frontend/src/vendor/`; Next.js is shimmed. The engine pipeline is
+> untouched; additive engine APIs shipped: draft snapshots + `file`/step-
+> completion events + event-log JSON, lint-gated source edits → immutable
+> versions, `image_base64` tweaks (LLM image blocks), covers. The
+> starter-template SDK (v1.1.0) speaks Codply's bridge v1 (console/error/
+> pause/resume/capture). 226 tests green. Scorecard: docs/CUTOVER.md.
+
 **Goal.** Make the entire user experience of this platform *functionally identical to
 Codply* (internal codename "ForgePlay"), while keeping our **FastAPI generation-service
 as the source-of-truth engine**. A visitor should believe they are using Codply; under

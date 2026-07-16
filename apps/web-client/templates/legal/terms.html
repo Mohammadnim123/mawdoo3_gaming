@@ -1,16 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Terms · {{ site_name }}{% endblock %}
-{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-10{% endblock %}
+{% load static %}
+{% block title %}{{ meta_title }} · {{ site_name }}{% endblock %}
+{% block description %}{{ meta_description }}{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<article class="grid gap-4 text-ink-secondary">
-  <h1 class="fp-title-page text-ink">Terms of Service</h1>
-  <p>By using {{ site_name }} you agree to these terms. Create responsibly and respect other creators.</p>
-  <h2 class="fp-title-section text-ink">Your content</h2>
-  <p>You own the games you create. By posting publicly you allow others to play and remix them on the platform. Remixes credit their source.</p>
-  <h2 class="fp-title-section text-ink">Acceptable use</h2>
-  <p>No illegal, harmful, or infringing content. Generated games run sandboxed and may not make network calls or access your data.</p>
-  <h2 class="fp-title-section text-ink">Availability</h2>
-  <p>The service is provided as-is during beta, with per-day generation limits that vary by plan.</p>
-  <p class="text-sm text-ink-muted">This is a product agreement for the platform, not legal advice.</p>
-</article>
+{# React legal-document reader (LegalPage slug="terms") — full bilingual #}
+{# content ships in the island bundle; locale comes from <html lang>. #}
+{{ island_props|json_script:"legal-island-props" }}
+<div id="legal-island">
+  <div class="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12">
+    <h1 class="fp-title-hero font-bold text-ink">{{ meta_title }}</h1>
+    <p class="mt-2 max-w-2xl text-base text-ink-secondary sm:text-lg">{{ meta_description }}</p>
+    <div class="fp-card mt-8 flex min-h-[30vh] items-center justify-center p-6 text-sm text-ink-muted">
+      <span class="fp-shimmer">{{ t.loading }}</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/legal.js' %}"></script>
 {% endblock %}

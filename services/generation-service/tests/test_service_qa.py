@@ -7,9 +7,6 @@ persisted event log → SSE replay (step + failed) → service-token boundary.
 
 from __future__ import annotations
 
-import time
-
-import pytest
 from tests.conftest import boot_client, drain_job
 
 

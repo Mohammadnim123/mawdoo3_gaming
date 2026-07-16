@@ -13,6 +13,7 @@ import json
 import uuid
 from urllib.parse import urlsplit
 
+from core.i18n import stage_label, strings
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -20,8 +21,6 @@ from django.db.models import F
 from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
-
-from core.i18n import stage_label, strings
 
 from games.constants import PROMPT_MAX_CHARS, PROMPT_MIN_CHARS
 from games.models import (
@@ -224,7 +223,13 @@ def feed_json(request):
 def create(request):
     if request.method == "POST":
         return _start_create(request)
-    return render(request, "pages/create.html", {"idea": (request.GET.get("idea") or "").strip()})
+    idea = (request.GET.get("idea") or "").strip()
+    # The React create island (CreateFlow) owns the page; `idea` also feeds the
+    # legacy no-JS form fallback whose POST handler below stays intact.
+    return render(request, "pages/create.html", {
+        "idea": idea,
+        "island_props": {"idea": idea},
+    })
 
 
 def _start_create(request):
@@ -287,69 +292,37 @@ def _island_labels(t: dict) -> dict:
 
 
 @login_required(login_url="/login")
-def studio(request, game_id):
-    from django.middleware.csrf import get_token
+def studio_home(request):
+    """`/studio` — the new-project workspace. The island owns everything
+    (LibraryView-backed empty workspace, `?job=` handoff from /create read
+    straight from the URL); props stay empty by design."""
+    return render(request, "workspace/studio.html", {"game": None, "island_props": {}})
 
+
+@login_required(login_url="/login")
+def studio(request, game_id):
+    """`/studio/{gameId}` — existing-project workspace. The island resolves the
+    game through /api/v1/* (ownerGuard handles 403/404); the server-side owner
+    check stays as a hard 404 for strangers, and a page load still reconciles a
+    finished-while-away job (sync_job) so reloads land on fresh state."""
     game = get_object_or_404(Game, id=game_id, owner=request.user)
     job = game.jobs.order_by("-created_at").first()
     if job is not None and (job.status in _ACTIVE or not game.is_live):
-        job = sync_job(job)
+        sync_job(job)
         game.refresh_from_db()
-    active = job is not None and job.status in _ACTIVE
-    locale = _locale(request)
-
-    job_urls = None
-    job_props = None
-    if job is not None:
-        base = f"/studio/jobs/{job.id}"
-        job_urls = {
-            "stream": f"{base}/stream",
-            "status": f"{base}/status",
-            "answers": f"{base}/answers",
-            "cancel": f"{base}/cancel",
-        }
-        job_props = {
-            "refId": str(job.id),
-            "status": job.status,
-            "prompt": job.prompt,
-            "error": job.error_message or None,
-            "questions": job.questions or [],
-        }
-    island_props = {
-        "csrfToken": get_token(request),
-        "locale": locale,
-        "labels": _island_labels(_t(request)),
-        "game": {
-            "id": str(game.id),
-            "title": game.title(locale),
-            "prompt": game.prompt,
-            "isLive": game.is_live,
-            "slug": game.slug,
-        },
-        "job": job_props if (active or (job is not None and not game.is_live)) else None,
-        "jobUrls": job_urls if active else None,
-        "urls": {
-            "chat": f"/games/{game.id}/chat",
-            "versions": f"/games/{game.id}/versions",
-            "rollback": f"/games/{game.id}/rollback",
-            "jobBase": "/studio/jobs/",
-        },
-        "player": (
-            {"src": _game_src(game, locale), "origin": _game_origin(game)}
-            if game.is_live
-            else None
-        ),
-    }
     return render(request, "workspace/studio.html", {
         "game": game,
-        "job": job,
-        "active": active,
-        "show_island": active or game.is_live or (
-            job is not None and job.status in (JobStatus.CANCELLED, JobStatus.EXPIRED)
-        ),
-        "game_src": _game_src(game, locale) if game.is_live else "",
-        "island_props": island_props,
+        "island_props": {"gameId": str(game.id)},
     })
+
+
+def game_studio_redirect(request, slug):
+    """`/g/{slug}/studio` — canonicalize into the workspace: the owner lands on
+    `/studio/{id}` (permanent), everyone else on the public game page."""
+    game = get_object_or_404(Game, slug=slug)
+    if request.user.is_authenticated and game.owner_id == request.user.id:
+        return redirect(f"/studio/{game.id}", permanent=True)
+    return redirect(f"/g/{game.slug}")
 
 
 @login_required(login_url="/login")
@@ -566,8 +539,12 @@ def game_detail(request, slug):
         raise Http404
     if game.visibility == Visibility.PRIVATE and not is_owner:
         raise Http404
-    if not game.is_live and not is_owner:
-        raise Http404
+    if not game.is_live:
+        if not is_owner:
+            raise Http404
+        # Version-less drafts have nothing to show the owner here — the
+        # workspace is their home (reference parity).
+        return redirect(f"/studio/{game.id}")
     locale = _locale(request)
 
     from social.models import Comment, Like, Save

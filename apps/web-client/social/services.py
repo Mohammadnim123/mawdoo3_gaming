@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.db.models import F
-
 from games.models import Game
 
 from .models import Comment, Follow, Like, Notification, Save, Share

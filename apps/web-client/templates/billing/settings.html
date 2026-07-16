@@ -1,28 +1,22 @@
 {% extends "base.html" %}
+{% load static %}
+{# /account/settings — the settings island (reference
+   app/account/settings/page.tsx): Appearance (ThemeToggle, fp-theme storage)
+   + Language (full ?lang=xx navigation so Django re-renders <html lang dir>).
+   Private surface → noindex (reference metadata). #}
 {% block title %}{{ t.nav_settings }} · {{ site_name }}{% endblock %}
-{% block main_class %}mx-auto w-full max-w-2xl px-4 pb-24 pt-6{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<h1 class="fp-title-page mb-6 text-ink">{{ t.nav_settings }}</h1>
-
-<form method="post" action="/account/settings" class="fp-card mb-4 grid gap-3 p-5">
-  {% csrf_token %}
-  <label class="text-xs text-ink-muted">{{ t.acct_display_name }}
-    <input class="fp-input mt-1" name="display_name" value="{{ user.display_name }}" maxlength="80">
-  </label>
-  <label class="text-xs text-ink-muted">{{ t.acct_bio }}
-    <textarea class="fp-input mt-1" name="bio" rows="2" maxlength="200">{{ user.bio }}</textarea>
-  </label>
-  <button class="fp-btn fp-btn-cta justify-self-start" type="submit">{{ t.acct_save }}</button>
-</form>
-
-<div class="fp-card grid gap-3 p-5">
-  <div class="flex items-center justify-between">
-    <span class="text-ink">Language</span>
-    <a href="?lang={{ other_locale }}" class="fp-btn fp-btn-soft fp-btn-sm">{{ t.other_lang }}</a>
-  </div>
-  <div class="flex items-center justify-between">
-    <span class="text-ink">Theme</span>
-    <button type="button" class="fp-btn fp-btn-soft fp-btn-sm" data-theme-toggle>Toggle</button>
+<div id="settings-island">
+  {# SettingsScreen has no async state — a light shell of the two cards. #}
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-8" aria-hidden="true">
+    <div class="fp-pulse h-9 w-40 rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-40 w-full rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-48 w-full rounded-2xl bg-surface-2"></div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/settings.js' %}"></script>
 {% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load static %}
+{# One template for all five auth pages — the auth island mounts the screen
+   named by island_props.screen (login/forgot/reset/verify/callback); the
+   screens read ?next/?token/?code/?error client-side, reference-style. #}
+{% block title %}{% if screen == "forgot" %}{{ t.auth_forgot }}{% elif screen == "reset" %}{{ t.auth_password }}{% else %}{{ t.auth_login }}{% endif %} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+{{ island_props|json_script:"auth-island-props" }}
+<div id="auth-island" class="min-h-[50vh]"></div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/auth.js' %}"></script>
+{% endblock %}

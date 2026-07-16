@@ -7,16 +7,20 @@
   <meta name="description" content="{% block description %}{{ t.hero_subtitle }}{% endblock %}">
   <meta name="theme-color" content="#0a0a0f">
 
-  {# Pre-paint theme so there is no flash: stored choice, else auto (day/night). #}
+  {# Pre-paint theme boot (reference ThemeScript): stored "fp-theme" choice,  #}
+  {# else auto (light 07:00–19:00 local). Sets colorScheme so native controls #}
+  {# and scrollbars follow. No flash — runs before first paint.               #}
   <script>
     (function () {
       try {
-        var t = localStorage.getItem("fp_theme");
-        if (!t || t === "auto") {
-          var h = new Date().getHours();
-          t = (h >= 7 && h < 19) ? "light" : "dark";
+        var p = localStorage.getItem("fp-theme");
+        if (p !== "light" && p !== "dark") {
+          var h = (new Date()).getHours();
+          p = (h >= 7 && h < 19) ? "light" : "dark";
         }
-        document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+        var d = document.documentElement;
+        d.dataset.theme = p;
+        d.style.colorScheme = p;
       } catch (e) {}
     })();
   </script>
@@ -28,24 +32,35 @@
   <link rel="stylesheet" href="{% static 'games/dist/app.css' %}">
   {% block head %}{% endblock %}
 </head>
-<body class="min-h-dvh bg-canvas text-ink font-sans antialiased{% block body_class %}{% endblock %}">
+<body class="flex min-h-dvh flex-col bg-canvas text-ink font-sans antialiased{% block body_class %}{% endblock %}">
+  {# E34 — sitewide Organization + WebSite JSON-LD (reference domain/seo/schema.ts). #}
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","@id":"{{ request.scheme }}://{{ request.get_host }}/#organization","name":"{{ site_name }}","url":"{{ request.scheme }}://{{ request.get_host }}","logo":"{{ request.scheme }}://{{ request.get_host }}/icon.svg","description":"Codply turns your words into real browser games. Type an idea, play it in minutes — then post it, share it and remix everyone else's."}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"{{ request.scheme }}://{{ request.get_host }}/#website","name":"{{ site_name }}","url":"{{ request.scheme }}://{{ request.get_host }}","description":"Codply turns your words into real browser games. Type an idea, play it in minutes — then post it, share it and remix everyone else's.","publisher":{"@id":"{{ request.scheme }}://{{ request.get_host }}/#organization"}}</script>
+
   {% block chrome %}{% include "chrome/_topbar.html" %}{% endblock %}
 
-  <main id="content" class="{% block main_class %}mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:pb-10{% endblock %}">
-    {% if messages %}
-      <div class="mb-4 space-y-2">
-        {% for m in messages %}
-          <div class="fp-card px-4 py-3 text-sm" role="status">{{ m }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-    {% block content %}{% endblock %}
-  </main>
-
-  {% block footer %}{% include "chrome/_footer.html" %}{% endblock %}
+  {# Bottom padding = mobile tab bar height + home-indicator inset (0 on md+); #}
+  {# main grows so the footer sits at the bottom on short pages (AppChrome).   #}
+  <div class="flex flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0">
+    <main id="content" class="flex-1 {% block main_class %}{% endblock %}">
+      {% if messages %}
+        <div class="mx-auto mb-4 w-full max-w-6xl space-y-2 px-4 pt-6">
+          {% for m in messages %}
+            <div class="fp-card px-4 py-3 text-sm" role="status">{{ m }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+    {% block footer %}{% include "chrome/_footer.html" %}{% endblock %}
+  </div>
   {% block mobilenav %}{% include "chrome/_mobile_tabbar.html" %}{% endblock %}
 
-  <script src="{% static 'games/js/chrome.js' %}" defer></script>
+  {# Chrome island: hydrates #chrome-search / #chrome-actions and owns the    #}
+  {# global /g/{slug} overlay interception on pages without the feed island.  #}
+  {{ chrome_props|json_script:"chrome-actions-props" }}
+  <div id="chrome-overlay"></div>
+  <script type="module" src="{% static 'games/dist/islands/chrome.js' %}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

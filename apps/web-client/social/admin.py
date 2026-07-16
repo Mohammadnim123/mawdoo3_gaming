@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import (Comment, CommentLike, Follow, Like, Notification, Play,
-                     Report, Save, Share)
+from .models import Comment, CommentLike, Follow, Like, Notification, Play, Report, Save, Share
 
 
 @admin.register(Comment)

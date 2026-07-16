@@ -7,124 +7,70 @@
   <meta property="og:description" content="{{ game|loc_summary:locale|default:game.prompt }}">
   {% if game.cover_url %}<meta property="og:image" content="{{ game.cover_url }}">{% endif %}
   <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}/g/{{ game.slug }}">
+  {% if not game.is_live or game.visibility != "public" %}<meta name="robots" content="noindex">{% endif %}
+  {# E34 — the real VideoGame entity with live engagement counters (mirrors
+     the reference videoGameSchema; escapejs keeps user strings JSON-safe). #}
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"VideoGame",
    "name":"{{ game|loc_title:locale|escapejs }}",
-   "description":"{{ game|loc_summary:locale|default:game.prompt|escapejs }}",
-   "genre":"{{ game.genre|escapejs }}",
-   "author":{"@type":"Person","name":"{{ game.owner.display_name|escapejs }}"}}
+   "url":"{{ request.scheme }}://{{ request.get_host }}/g/{{ game.slug }}",
+   {% if game.cover_url %}"image":"{{ game.cover_url|escapejs }}",{% endif %}
+   {% with summary=game|loc_summary:locale %}{% if summary or game.prompt %}"description":"{{ summary|default:game.prompt|escapejs }}",{% endif %}{% endwith %}
+   {% if game.genre %}"genre":"{{ game.genre|escapejs }}",{% endif %}
+   "gamePlatform":"Web browser",
+   "playMode":"SinglePlayer",
+   "applicationCategory":"Game",
+   "operatingSystem":"Any",
+   "isAccessibleForFree":true,
+   "datePublished":"{{ game.created_at|date:"c" }}",
+   "author":{"@type":"Person","name":"{{ game.owner.display_name|default:game.owner.handle|escapejs }}","url":"{{ request.scheme }}://{{ request.get_host }}/u/{{ game.owner.handle }}"},
+   "publisher":{"@id":"{{ request.scheme }}://{{ request.get_host }}/#organization"},
+   "interactionStatistic":[
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/PlayAction","userInteractionCount":{{ game.play_count }}},
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/LikeAction","userInteractionCount":{{ game.like_count }}},
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/CommentAction","userInteractionCount":{{ game.comment_count }}},
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/ShareAction","userInteractionCount":{{ game.share_count }}}
+   ]}
+  </script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+    {"@type":"ListItem","position":1,"name":"{{ site_name|escapejs }}","item":"{{ request.scheme }}://{{ request.get_host }}/"},
+    {"@type":"ListItem","position":2,"name":"{{ game|loc_title:locale|escapejs }}","item":"{{ request.scheme }}://{{ request.get_host }}/g/{{ game.slug }}"}
+  ]}
   </script>
 {% endblock %}
-{% block main_class %}mx-auto w-full max-w-4xl px-4 pb-24 pt-6{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<div class="fp-card overflow-hidden">
-  {# Upgraded in place by the player island (ready watchdog, fullscreen, #}
-  {# bridge events); the plain iframe below is the no-JS fallback. #}
-  <div class="relative w-full" style="aspect-ratio:16/10;background:var(--color-surface-2)"
-       data-player-island
-       data-player-src="{{ game_src }}"
-       data-player-origin="{{ game_origin }}"
-       data-player-title="{{ game|loc_title:locale }}"
-       data-label-loading="{{ t.player_loading }}"
-       data-label-stuck="{{ t.player_stuck }}"
-       data-label-reload="{{ t.player_reload }}"
-       data-label-fullscreen="{{ t.player_fullscreen }}">
-    <iframe id="game-frame" title="{{ game|loc_title:locale }}"
-            class="absolute inset-0 h-full w-full"
-            src="{{ game_src }}" sandbox="allow-scripts"
-            referrerpolicy="no-referrer" allow="fullscreen"
-            data-game-origin="{{ game_origin }}"></iframe>
-  </div>
-</div>
-
-<div class="mt-4 flex flex-wrap items-center gap-3">
-  <div class="min-w-0">
-    <h1 class="fp-title-section truncate text-ink">{{ game|loc_title:locale }}</h1>
-    <div class="flex items-center gap-2">
-      <a href="/u/{{ game.owner.handle }}" class="text-sm text-ink-secondary hover:text-ink">
-        {{ t.by }} {{ game.owner.display_name }}
-      </a>
-      {% if user.is_authenticated and not is_owner %}
-        <form method="post" action="/users/{{ game.owner.handle }}/follow">{% csrf_token %}
-          <button class="fp-btn {% if viewer_following %}fp-btn-soft{% else %}fp-btn-cta{% endif %} fp-btn-sm" type="submit">
-            {% if viewer_following %}Following{% else %}Follow{% endif %}
-          </button>
-        </form>
-      {% endif %}
-    </div>
-  </div>
-  {% if game.genre %}<span class="fp-chip">{{ game.genre }}</span>{% endif %}
-  <div class="ms-auto flex flex-wrap items-center gap-2">
-    <span class="fp-chip">▶ {{ game.play_count }}</span>
-    {% if user.is_authenticated %}
-      <form method="post" action="/games/{{ game.id }}/like">{% csrf_token %}
-        <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit" aria-pressed="{{ viewer_liked|yesno:'true,false' }}">{% if viewer_liked %}♥{% else %}♡{% endif %} {{ game.like_count }}</button>
-      </form>
-      <form method="post" action="/games/{{ game.id }}/save">{% csrf_token %}
-        <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">{% if viewer_saved %}★{% else %}☆{% endif %}</button>
-      </form>
-    {% else %}
-      <span class="fp-chip">♥ {{ game.like_count }}</span>
-    {% endif %}
-    <form method="post" action="/games/{{ game.id }}/share">{% csrf_token %}
-      <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">↗ {{ game.share_count }}</button>
-    </form>
-    {% if user.is_authenticated %}
-      <form method="post" action="/games/{{ game.id }}/remix">{% csrf_token %}
-        <button class="fp-btn fp-btn-soft fp-btn-sm" type="submit">⑂ {{ t.remix }}</button>
-      </form>
-    {% endif %}
-    {% if is_owner %}
-      <a href="/studio/{{ game.id }}" class="fp-btn fp-btn-soft fp-btn-sm">Studio</a>
-    {% endif %}
-    <button class="fp-btn fp-btn-soft fp-btn-sm" data-copy-link>{{ t.copy_link }}</button>
-  </div>
-</div>
-
-{% if game|loc_summary:locale %}
-  <p class="mt-3 text-ink-secondary">{{ game|loc_summary:locale }}</p>
-{% endif %}
-
-<section class="mt-8">
-  <h2 class="fp-title-section mb-3 text-ink">Comments · {{ game.comment_count }}</h2>
-  {% if user.is_authenticated %}
-    <form method="post" action="/games/{{ game.id }}/comments" class="mb-4 flex items-start gap-2">
-      {% csrf_token %}
-      <input class="fp-input" name="body" maxlength="500" required placeholder="Add a comment…">
-      <button class="fp-btn fp-btn-cta" type="submit">{{ t.ws_send }}</button>
-    </form>
-  {% else %}
-    <a href="/login?next=/g/{{ game.slug }}" class="mb-4 block text-sm text-ink-secondary hover:text-ink">{{ t.nav_login }} →</a>
-  {% endif %}
-  <ol class="grid gap-3">
-    {% for c in comments %}
-      <li class="fp-card p-3">
-        <div class="flex items-center gap-2 text-sm">
-          <a href="/u/{{ c.user.handle }}" class="font-semibold text-ink">{{ c.user.display_name }}</a>
-          <span class="text-xs text-ink-muted">{{ c.created_at|date:"M j" }}</span>
-          {% if user.is_authenticated and c.user_id == user.id or is_owner %}
-            <form method="post" action="/comments/{{ c.id }}/delete" class="ms-auto">{% csrf_token %}
-              <button class="text-xs text-ink-muted hover:text-danger" type="submit">{{ t.delete }}</button>
-            </form>
-          {% endif %}
+{# The island fetches the game contract by slug and renders the ported
+   GameScreen; until then the server ships the same pending layout. #}
+<div id="game-island">
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-3 sm:gap-5 sm:py-6 md:py-10">
+    <div class="fp-pulse aspect-[16/10] max-h-[70dvh] w-full rounded-2xl bg-surface-2" aria-hidden="true"></div>
+    <div class="fp-pulse h-8 w-2/3 rounded-2xl bg-surface-2" aria-hidden="true"></div>
+    <div class="fp-pulse h-5 w-48 rounded-2xl bg-surface-2" aria-hidden="true"></div>
+    <noscript>
+      {% if game_src %}
+        <div class="overflow-hidden rounded-2xl border border-edge bg-surface-2">
+          <div class="relative w-full" style="aspect-ratio:16/10">
+            <iframe title="{{ game|loc_title:locale }}" class="absolute inset-0 h-full w-full"
+                    src="{{ game_src }}" sandbox="allow-scripts"
+                    referrerpolicy="no-referrer" allow="fullscreen; pointer-lock"></iframe>
+          </div>
         </div>
-        <p class="mt-1 whitespace-pre-line text-ink-secondary">{{ c.body }}</p>
-        {% if c.reply_count %}<span class="text-xs text-ink-muted">{{ c.reply_count }} repl{{ c.reply_count|pluralize:"y,ies" }}</span>{% endif %}
-      </li>
-    {% empty %}
-      <li class="text-sm text-ink-muted">No comments yet.</li>
-    {% endfor %}
-  </ol>
-</section>
+      {% endif %}
+      <h1 class="fp-title-page mt-4 break-words font-bold">{{ game|loc_title:locale }}</h1>
+      <p class="mt-1 text-sm text-ink-secondary">
+        <a href="/u/{{ game.owner.handle }}" class="hover:text-ink">{{ t.by }} {{ game.owner.display_name|default:game.owner.handle }}</a>
+      </p>
+      {% if game|loc_summary:locale %}<p class="mt-3 text-sm text-ink-secondary">{{ game|loc_summary:locale }}</p>{% endif %}
+    </noscript>
+    {# Deep-link anchor before hydration; GameScreen re-renders it. #}
+    <div id="comments"></div>
+  </div>
+</div>
+<script id="game-island-props" type="application/json">{"slug": "{{ game.slug|escapejs }}"}</script>
 {% endblock %}
 {% block scripts %}
-<script type="module" src="{% static 'games/dist/islands/overlay.js' %}"></script>
-<script>
-  document.querySelectorAll("[data-copy-link]").forEach(function (b) {
-    b.addEventListener("click", function () {
-      navigator.clipboard && navigator.clipboard.writeText(location.href);
-      b.textContent = "✓";
-    });
-  });
-</script>
+<script type="module" src="{% static 'games/dist/islands/game.js' %}"></script>
 {% endblock %}

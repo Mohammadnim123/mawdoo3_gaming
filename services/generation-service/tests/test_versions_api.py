@@ -8,10 +8,7 @@ and the source endpoint are all exercised against genuine stored files.
 
 from __future__ import annotations
 
-import time
-
 from tests.conftest import boot_client, drain_job
-
 from tests.test_clarify_api import _sample_blueprint
 
 

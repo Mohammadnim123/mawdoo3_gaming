@@ -3,7 +3,6 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-
 from games.models import Game, GameStatus, GameVersion, Visibility
 
 from .models import Comment, Follow, Like, Notification, Save
@@ -85,10 +84,14 @@ class DiscoveryTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "/g/snakey")
 
-    def test_notifications_page_marks_read(self):
+    def test_notifications_page_keeps_unread_until_api_mark(self):
+        # The page render must NOT auto-mark (the island shows unread
+        # highlights, then marks explicitly via the contract API).
         viewer = User.objects.create_user(email="v@x.com", password="pass12345")
         Notification.objects.create(recipient=self.owner, actor=viewer, type="follow")
         self.client.force_login(self.owner)
         r = self.client.get("/notifications")
         self.assertEqual(r.status_code, 200)
+        self.assertEqual(Notification.objects.filter(recipient=self.owner, read=False).count(), 1)
+        self.client.post("/api/v1/me/notifications/read")
         self.assertEqual(Notification.objects.filter(recipient=self.owner, read=False).count(), 0)

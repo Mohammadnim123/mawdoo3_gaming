@@ -76,15 +76,39 @@ class StructuredLlm:
         self._max_output_tokens = max_output_tokens
 
     async def generate(
-        self, stage: str, system: str, user: str, schema: type[T]
+        self,
+        stage: str,
+        system: str,
+        user: str,
+        schema: type[T],
+        image_b64: str | None = None,
+        image_media_type: str = "image/webp",
     ) -> tuple[T, LlmUsage]:
         """One structured call; returns the validated artifact + token usage.
 
         A schema-validation failure is fed back to the model up to twice —
         the third failure propagates (the job runner maps it to pipeline_error).
+
+        ``image_b64`` (optional) attaches one image content block ahead of the
+        text on the user message (Anthropic Messages format) — used by tweak
+        runs that carry a reference screenshot. Inert when None: the request
+        is byte-for-byte what it always was.
         """
         usage = LlmUsage(stage=stage, model=self.model)
-        messages: list[dict] = [{"role": "user", "content": user}]
+        content: str | list[dict] = user
+        if image_b64:
+            content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image_media_type,
+                        "data": image_b64,
+                    },
+                },
+                {"type": "text", "text": user},
+            ]
+        messages: list[dict] = [{"role": "user", "content": content}]
         tool = {
             "name": _EMIT_TOOL_NAME,
             "description": "Return the complete structured result.",

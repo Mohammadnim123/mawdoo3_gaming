@@ -10,7 +10,6 @@ answers-on-wrong-status conflicts, and creator cancel.
 from __future__ import annotations
 
 import json
-import time
 
 from tests.conftest import boot_client, build_sample_blueprint, drain_job
 

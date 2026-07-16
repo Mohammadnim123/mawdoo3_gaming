@@ -1,37 +1,22 @@
 {% extends "base.html" %}
+{% load static %}
+{# /me — the account island (reference app/me/page.tsx). AccountScreen reads
+   ?tab= client-side; the view keeps its @login_required gate. Reference tab
+   title: t.meta.myAccount ("My account") — served from the legacy catalog's
+   closest key. Private surface → noindex (reference metadata). #}
 {% block title %}{{ t.acct_title }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<div class="mb-6 flex items-center gap-4">
-  <span class="grid h-16 w-16 place-items-center rounded-full text-2xl font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{{ profile_user.display_name|first|upper|default:"U" }}</span>
-  <div class="min-w-0">
-    <h1 class="fp-title-page text-ink">{{ profile_user.display_name }}</h1>
-    <p class="text-sm text-ink-muted">@{{ profile_user.handle }} · {{ profile_user.credits_balance_cents }}¢ credits · {{ profile_user.daily_gen_quota }}/day</p>
+<div id="account-island">
+  {# Server skeleton mirroring AccountScreen's isPending state. #}
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-8" aria-hidden="true">
+    <div class="fp-pulse h-10 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-40 w-full rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-40 w-full rounded-2xl bg-surface-2"></div>
   </div>
-  <a href="/u/{{ profile_user.handle }}" class="fp-btn fp-btn-soft fp-btn-sm ms-auto hidden md:inline-flex">{{ t.nav_profile }}</a>
 </div>
-
-<details class="fp-card mb-6 p-4">
-  <summary class="cursor-pointer text-sm font-semibold text-ink">{{ t.acct_profile }}</summary>
-  <form method="post" action="/me/update" class="mt-4 grid gap-3">
-    {% csrf_token %}
-    <label class="text-xs text-ink-muted">{{ t.acct_display_name }}
-      <input class="fp-input mt-1" name="display_name" value="{{ profile_user.display_name }}" maxlength="80">
-    </label>
-    <label class="text-xs text-ink-muted">{{ t.acct_bio }}
-      <textarea class="fp-input mt-1" name="bio" rows="2" maxlength="200">{{ profile_user.bio }}</textarea>
-    </label>
-    <button class="fp-btn fp-btn-cta justify-self-start" type="submit">{{ t.acct_save }}</button>
-  </form>
-</details>
-
-<div class="mb-4 flex items-center gap-2 text-sm">
-  <a href="/me?tab=games" class="fp-chip {% if tab != 'saved' %}text-ink{% endif %}">{{ t.nav_my_games }}</a>
-  <a href="/me?tab=saved" class="fp-chip {% if tab == 'saved' %}text-ink{% endif %}">{{ t.nav_saved }}</a>
-</div>
-
-{% if tab == 'saved' %}
-  {% with items=saved %}{% include "partials/_game_grid.html" %}{% endwith %}
-{% else %}
-  {% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
-{% endif %}
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/account.js' %}"></script>
 {% endblock %}

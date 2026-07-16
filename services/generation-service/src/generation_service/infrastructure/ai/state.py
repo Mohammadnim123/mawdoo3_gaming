@@ -39,6 +39,11 @@ class GenerationState(TypedDict, total=False):
     mode: JobKind
     tweak_instruction: str
     base_blueprint: GameBlueprint
+    # Optional normalized reference image (base64 WebP) attached to the tweak;
+    # forwarded as an image content block on the tweak LLM calls. Absent for
+    # create runs and image-less tweaks — the pipeline behaves exactly as
+    # before when the key is missing.
+    image_b64: str | None
 
     # Stage artifacts
     analysis: PromptAnalysis

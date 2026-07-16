@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
+from billing.services import grant_initial
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
-
-from billing.services import grant_initial
 
 from .emails import send_magic_link, send_password_reset, send_verify_email
 from .models import LoginToken
@@ -18,7 +18,8 @@ User = get_user_model()
 VALID_MODES = {"login", "signup", "magic"}
 
 
-def _safe_next(request, default: str = "/") -> str:
+def _safe_next(request, default: str = "/create") -> str:
+    """Reference parity: safeNext defaults to /create (see safeNext.ts)."""
     nxt = request.POST.get("next") or request.GET.get("next") or default
     if url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()},
                                        require_https=request.is_secure()):
@@ -26,9 +27,16 @@ def _safe_next(request, default: str = "/") -> str:
     return default
 
 
-def _oauth_providers() -> list[dict]:
-    """Configured OAuth providers (none until credentials are wired)."""
-    return []
+def _auth_island(request, screen: str, **extra: str | None):
+    """Render an auth page that mounts the React auth island (islands/auth.tsx).
+
+    Only ``screen`` picks the component — the screens read ?next/?token/?code/
+    ?error client-side via the next/navigation shim, exactly like the reference
+    pages, so deep links behave identically. The extra props are echoed for
+    the island-props contract ({screen, next?, mode?, token?, error?}).
+    """
+    props = {"screen": screen} | {k: v for k, v in extra.items() if v}
+    return render(request, "auth/island.html", {"screen": screen, "island_props": props})
 
 
 # --------------------------------------------------------------------------
@@ -63,7 +71,9 @@ def login_view(request):
             else:
                 user = User.objects.create_user(email=email, password=password)
                 grant_initial(user)
-                _, raw = LoginToken.issue(email, LoginToken.Purpose.VERIFY, user=user)
+                # SIGNUP purpose: the emailed /auth/verify link is redeemed
+                # client-side by POST /api/v1/auth/verify (SIGNUP or LOGIN).
+                _, raw = LoginToken.issue(email, LoginToken.Purpose.SIGNUP, user=user)
                 send_verify_email(request, email, raw)
                 login(request, user)
                 return redirect(nxt)
@@ -74,8 +84,10 @@ def login_view(request):
                 return redirect(nxt)
             messages.error(request, "Wrong email or password.")
 
-    return render(request, "auth/login.html",
-                  {"mode": mode, "next": nxt, "providers": _oauth_providers()})
+    # GET (and failed POST): the island renders the reference LoginScreen;
+    # Django messages from the legacy form handlers show above it.
+    return _auth_island(request, "login", next=request.GET.get("next"),
+                        mode=request.GET.get("mode"), error=request.GET.get("error"))
 
 
 @require_POST
@@ -86,28 +98,11 @@ def logout_view(request):
 
 @require_http_methods(["GET"])
 def verify_view(request):
-    """Redeem a magic-link / email-verify / signup token → sign the user in."""
-    raw = request.GET.get("token", "")
-    token = None
-    for purpose in (LoginToken.Purpose.LOGIN, LoginToken.Purpose.VERIFY,
-                    LoginToken.Purpose.SIGNUP):
-        token = LoginToken.redeem(raw, purpose)
-        if token:
-            break
-    if not token:
-        messages.error(request, "That link is invalid or has expired.")
-        return redirect("/login")
-
-    user = token.user or User.objects.filter(email__iexact=token.email).first()
-    if user is None:
-        messages.error(request, "That link is invalid or has expired.")
-        return redirect("/login")
-    if not user.email_verified:
-        user.email_verified = True
-        user.save(update_fields=["email_verified"])
-    login(request, user)
-    messages.success(request, "You're signed in.")
-    return redirect(_safe_next(request))
+    """Emailed verify / magic-link URLs land here. The island's VerifyScreen
+    redeems the token client-side (POST /api/v1/auth/verify) with a spinner,
+    reference-style — no server-side redeem on GET (tokens are single-use;
+    link prefetchers must not burn them)."""
+    return _auth_island(request, "verify", token=request.GET.get("token"))
 
 
 # --------------------------------------------------------------------------
@@ -122,7 +117,19 @@ def forgot_view(request):
             _, raw = LoginToken.issue(email, LoginToken.Purpose.RESET, user=user)
             send_password_reset(request, email, raw)
         return render(request, "auth/check_email.html", {"email": email, "reset": True})
-    return render(request, "auth/forgot.html")
+    return _auth_island(request, "forgot")
+
+
+@require_http_methods(["GET"])
+def forgot_redirect(request):
+    """Legacy /auth/forgot → the reference URL shape."""
+    return redirect("/forgot-password")
+
+
+@require_http_methods(["GET"])
+def reset_redirect(request, token: str):
+    """Legacy /auth/reset/<token> → the reference URL shape (?token=)."""
+    return redirect(f"/reset-password?{urlencode({'token': token})}")
 
 
 @require_http_methods(["GET", "POST"])
@@ -136,7 +143,7 @@ def reset_view(request):
             return redirect("/login")
         if len(password) < 8:
             messages.error(request, "Password must be at least 8 characters.")
-            return render(request, "auth/reset.html", {"token": raw})
+            return _auth_island(request, "reset", token=raw)
         user = token.user or User.objects.filter(email__iexact=token.email).first()
         if user is None:
             messages.error(request, "That reset link is invalid or has expired.")
@@ -147,8 +154,8 @@ def reset_view(request):
         user.save(update_fields=["password", "auth_epoch", "email_verified"])
         login(request, user)
         messages.success(request, "Your password has been reset.")
-        return redirect("/")
-    return render(request, "auth/reset.html", {"token": raw})
+        return redirect("/create")  # reference: reset finishes to /create
+    return _auth_island(request, "reset", token=request.GET.get("token"))
 
 
 # --------------------------------------------------------------------------
@@ -156,13 +163,17 @@ def reset_view(request):
 # --------------------------------------------------------------------------
 @require_http_methods(["GET"])
 def oauth_start(request, provider: str):
-    messages.error(request, "Social login isn't configured yet — use email.")
-    return redirect("/login")
+    # Reference contract: every OAuth failure mode lands on /login?error=oauth
+    # (the LoginScreen shows one calm, generic notice).
+    return redirect("/login?error=oauth")
 
 
 @require_http_methods(["GET"])
 def oauth_callback(request):
-    return redirect("/login")
+    """OAuth return leg: the island's CallbackScreen exchanges ?code= for a
+    session client-side (POST /api/v1/auth/oauth/complete), then follows the
+    safe ?next=."""
+    return _auth_island(request, "callback")
 
 
 # --------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load game_extras static %}
 {% block main_class %}w-full{% endblock %}
 {% block content %}
 {# ── Hero ─────────────────────────────────────────────────────────────── #}
@@ -7,10 +7,11 @@
   <div class="fp-hero-grid" aria-hidden="true"></div>
   <div class="relative mx-auto flex w-full max-w-4xl flex-col items-center gap-4 px-4 pb-8 pt-8 text-center sm:gap-5 sm:pb-10 sm:pt-12">
     <p class="flex items-center gap-2 rounded-full border border-edge bg-surface-1 px-4 py-1.5 text-xs font-medium text-ink-secondary">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-violet)" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>
+      {# lucide Sparkles — matches the reference badge icon #}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 text-violet" aria-hidden="true"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
       {{ t.hero_pill }}
     </p>
-    <h1 class="fp-title-hero fp-wordmark font-bold">
+    <h1 class="fp-title-hero font-bold">
       <span class="relative inline-block">
         <span>{{ t.hero_title_lead }}</span><span class="fp-headline-gradient">{{ t.hero_title_highlight }}</span>
         <span class="fp-shine-overlay absolute inset-0" aria-hidden="true">{{ t.hero_title_lead }}{{ t.hero_title_highlight }}</span>
@@ -19,17 +20,17 @@
     <p class="max-w-xl text-base text-ink-secondary">{{ t.hero_subtitle }}</p>
 
     <form action="/create" method="get" class="w-full max-w-2xl text-start">
-      <div class="rounded-3xl border border-edge bg-surface-1/70 p-4 backdrop-blur-xl transition-colors duration-200 focus-within:border-violet sm:p-5">
+      <div class="rounded-3xl border border-edge bg-surface-1/70 p-4 backdrop-blur-xl transition-colors duration-200 ease-out focus-within:border-violet sm:p-5">
         <textarea name="idea" rows="3" maxlength="1000" required data-typewriter
                   aria-label="{{ t.hero_prompt_placeholder }}"
                   class="min-h-20 w-full resize-none bg-transparent text-base text-ink outline-none placeholder:text-ink-muted sm:text-lg"
                   placeholder="{{ t.hero_prompt_placeholder }}"></textarea>
         <div class="flex items-end justify-between gap-3">
-          <span data-charcount class="font-mono text-xs tabular-nums text-ink-muted opacity-0">0/1000</span>
-          <button type="submit" aria-label="{{ t.hero_cta }}"
-                  class="fp-hit flex size-11 shrink-0 items-center justify-center rounded-full text-ink-on-accent transition-opacity hover:opacity-90"
-                  style="background-image:var(--gradient-cta)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <span data-charcount aria-hidden="true"
+                class="font-mono text-xs tabular-nums text-ink-muted transition-opacity duration-150 opacity-0">0/1000</span>
+          <button type="submit" aria-label="{{ t.hero_cta }}" data-hero-send
+                  class="fp-hit flex size-11 shrink-0 items-center justify-center rounded-full bg-[image:var(--gradient-cta)] text-ink-on-accent transition-opacity duration-150 ease-out hover:opacity-90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-40">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
       </div>
@@ -37,50 +38,29 @@
   </div>
 </section>
 
-{# ── Feed (3-column: nav rail · posts · discovery rail) ───────────────── #}
-<div class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-4 sm:py-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,600px)_300px] xl:justify-center">
-  <div class="hidden lg:block"><div class="sticky top-20">{% include "feed/_left_rail.html" %}</div></div>
-
-  <main class="flex min-w-0 flex-col gap-4">
-    {# composer card #}
-    <a href="/create" class="flex items-center gap-3 rounded-2xl border border-edge bg-surface-1 p-3 transition-colors hover:border-edge-strong">
-      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{% if user.is_authenticated %}{{ user.display_name|first|upper }}{% else %}?{% endif %}</span>
-      <span class="flex-1 truncate rounded-full bg-surface-2 px-4 py-2.5 text-sm text-ink-muted">{{ t.feed_composer_prompt }}</span>
-      <span class="grid size-9 shrink-0 place-items-center rounded-full text-white" style="background-color:var(--color-violet)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 21 12-12M15 5l4 4M18 3v2M22 7h-2M6 4v2M8 6H6"/></svg>
-      </span>
-    </a>
-
-    {# sort chips (mobile) #}
-    <div class="flex flex-wrap items-center gap-2 lg:hidden">
-      <a href="/?sort=for_you" class="fp-chip {% if sort == 'for_you' %}text-ink border-edge-strong{% endif %}">{{ t.feed_for_you }}</a>
-      <a href="/?sort=trending" class="fp-chip {% if sort == 'trending' %}text-ink border-edge-strong{% endif %}">{{ t.feed_trending }}</a>
-      <a href="/?sort=new" class="fp-chip {% if sort == 'new' %}text-ink border-edge-strong{% endif %}">{{ t.feed_new }}</a>
-      {% if user.is_authenticated %}<a href="/?sort=following" class="fp-chip {% if sort == 'following' %}text-ink border-edge-strong{% endif %}">{{ t.feed_following }}</a>{% endif %}
-    </div>
-
-    {# genre filter chips #}
-    <div class="fp-scroll-x -mx-4 gap-2 px-4 sm:mx-0 sm:flex-wrap sm:overflow-x-visible sm:px-0 sm:[mask-image:none]" role="group" aria-label="{{ t.feed_filter_genre }}">
-      {% for g in genres %}
-        <a href="{% if genre == g %}/?sort={{ sort }}{% else %}/?genre={{ g }}&sort={{ sort }}{% endif %}"
-           class="fp-chip capitalize {% if genre == g %}text-ink border-edge-strong{% endif %}">{{ g }}</a>
-      {% endfor %}
-    </div>
-
-    {# posts #}
-    {% for game in games %}
-      {% include "feed/_post_card.html" %}
-    {% empty %}
-      <div class="fp-card p-10 text-center text-ink-muted">{{ t.feed_empty }}</div>
-    {% endfor %}
-  </main>
-
-  <div class="hidden xl:block"><div class="sticky top-20">{% include "feed/_right_rail.html" %}</div></div>
+{# ── Feed island (3-column posts feed + in-place player overlay) ────────
+   The server ships the reference pending state (3 skeleton cards) plus a
+   crawlable list of the first feed page; the island replaces it on mount. #}
+<div id="feed-island">
+  <div class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-4 sm:py-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,600px)_300px] xl:justify-center">
+    <div class="hidden lg:block"></div>
+    <main class="flex min-w-0 flex-col gap-4">
+      <div class="flex flex-col gap-4">
+        <div class="fp-pulse h-[420px] w-full rounded-2xl bg-surface-2" aria-hidden="true"></div>
+        <div class="fp-pulse h-[420px] w-full rounded-2xl bg-surface-2" aria-hidden="true"></div>
+        <div class="fp-pulse h-[420px] w-full rounded-2xl bg-surface-2" aria-hidden="true"></div>
+      </div>
+      <nav class="sr-only" aria-label="{{ t.feed_trending_now }}">
+        {% for game in games %}
+          <a href="/g/{{ game.slug }}">{{ game|loc_title:locale }}</a>
+        {% endfor %}
+      </nav>
+    </main>
+    <div class="hidden xl:block"></div>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="{% static 'games/js/hero.js' %}" defer></script>
-{{ overlay_props|json_script:"overlay-props" }}
-<div id="overlay-island"></div>
-<script type="module" src="{% static 'games/dist/islands/overlay.js' %}"></script>
+<script type="module" src="{% static 'games/dist/islands/feed.js' %}"></script>
 {% endblock %}

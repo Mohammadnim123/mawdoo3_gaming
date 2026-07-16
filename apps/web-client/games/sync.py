@@ -46,6 +46,26 @@ def unique_slug(title: str, exclude_id=None) -> str:
     return slug
 
 
+def mirror_engine_version(game: Game, engine_result: dict,
+                          change_summary: str = "") -> GameVersion:
+    """Mirror an engine version produced OUTSIDE a job (e.g. a hand-edited
+    source save) as a local GameVersion and flip the pointer."""
+    from django.db.models import Max
+
+    local_max = game.versions.aggregate(n=Max("version_no"))["n"] or 0
+    version = GameVersion.objects.create(
+        game=game,
+        version_no=local_max + 1,
+        parent=game.current_version,
+        play_url=engine_result.get("play_url") or game.play_url,
+        service_version_id=engine_result.get("version_id") or "",
+        change_summary=change_summary[:280],
+    )
+    game.current_version = version
+    game.save(update_fields=["current_version", "updated_at"])
+    return version
+
+
 def sync_job(job_ref: GenerationJobRef) -> GenerationJobRef:
     """Pull the engine job snapshot into the local mirror; finalize on success."""
     client = get_client()
@@ -97,6 +117,7 @@ def _finalize_success(client, job_ref: GenerationJobRef, game: Game, svc_game_id
     game.service_game_id = svc_game_id
     game.title_en = title.get("en") or game.title_en
     game.title_ar = title.get("ar") or game.title_ar
+    game.cover_url = svc.get("cover_url") or game.cover_url
     game.genre = svc.get("genre", "") or game.genre
     game.summary_en = summary or game.summary_en
     game.summary_ar = summary or game.summary_ar

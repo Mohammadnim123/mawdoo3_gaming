@@ -12,6 +12,9 @@ from generation_service.api.schemas import (
     AnswersRequest,
     GenerationCreateRequest,
     GenerationResponse,
+    JobDraftResponse,
+    JobEventItem,
+    JobEventsResponse,
 )
 from generation_service.container import Container
 from generation_service.domain.entities import JobStatus
@@ -74,6 +77,36 @@ async def get_generation(
     return GenerationResponse.from_entity(job)
 
 
+@router.get("/{job_id}/draft", response_model=JobDraftResponse)
+async def get_generation_draft(
+    job_id: str,
+    container: Annotated[Container, Depends(get_container)],
+) -> JobDraftResponse:
+    """Live draft source: the code as it is being written — available while
+    the job runs and after failures (Code view + recovery). Empty shape
+    ({content: null, files: []}) before codegen has produced anything."""
+    await container.get_generation.execute(job_id)  # 404 for unknown jobs
+    draft = await container.job_drafts.get(job_id)
+    if draft is None:
+        return JobDraftResponse(content=None, files=[])
+    return JobDraftResponse.model_validate(draft)
+
+
+@router.get("/{job_id}/events", response_model=JobEventsResponse)
+async def list_generation_events(
+    job_id: str,
+    container: Annotated[Container, Depends(get_container)],
+) -> JobEventsResponse:
+    """The persisted event log as JSON, in seq order — the same log the SSE
+    stream replays. Lets the web tier build job snapshots (steps + a
+    replayable transcript) without holding a stream open."""
+    await container.get_generation.execute(job_id)  # 404 for unknown jobs
+    events = await container.job_events.list_since(job_id, 0)
+    return JobEventsResponse(
+        items=[JobEventItem(seq=e.seq, event=e.event, data=e.data) for e in events]
+    )
+
+
 @router.get("/{job_id}/stream")
 async def stream_generation(
     job_id: str,
@@ -129,7 +162,7 @@ async def stream_generation(
                     return
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     yield ": keep-alive\n\n"
                     continue
                 if event.seq <= last_seq:

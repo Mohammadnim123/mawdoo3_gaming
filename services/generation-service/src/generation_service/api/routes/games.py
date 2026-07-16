@@ -13,6 +13,8 @@ from generation_service.api.schemas import (
     GenerationResponse,
     RollbackRequest,
     RollbackResponse,
+    SourceEditRequest,
+    SourceEditResponse,
     TweakCreateRequest,
     VersionSourceResponse,
     play_url_for_prefix,
@@ -58,9 +60,33 @@ async def start_tweak(
 ) -> GenerationResponse:
     """Chat-edit an existing game: the pipeline revises its blueprint, regenerates
     the code, re-runs the quality gate, and publishes a NEW immutable version on
-    success. Poll GET /api/v1/generations/{id} for progress."""
-    job = await container.start_tweak.execute(game_id, body.instruction)
+    success. An optional image_base64 attaches a reference image to the edit.
+    Poll GET /api/v1/generations/{id} for progress."""
+    job = await container.start_tweak.execute(
+        game_id, body.instruction, image_base64=body.image_base64
+    )
     return GenerationResponse.from_entity(job)
+
+
+@router.put(
+    "/{game_id}/source",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SourceEditResponse,
+)
+async def put_source(
+    game_id: str,
+    body: SourceEditRequest,
+    container: Annotated[Container, Depends(get_container)],
+) -> SourceEditResponse:
+    """Hand-edit the game's source: the edited game.js/game.css runs through
+    the static validation gate (no LLM), is re-assembled against the stored
+    blueprint, and lands as a new immutable current version. 422 with
+    error.details.findings [{rule, line, snippet}] when the gate rejects."""
+    game, version = await container.edit_source.execute(game_id, body.game_js, body.game_css)
+    return SourceEditResponse(
+        version_id=version.id,
+        play_url=play_url_for_prefix(version.storage_prefix, container.settings),
+    )
 
 
 @router.get("/{game_id}/versions", response_model=GameVersionsListResponse)

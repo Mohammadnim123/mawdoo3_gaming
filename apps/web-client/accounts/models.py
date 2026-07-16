@@ -5,7 +5,6 @@ import secrets
 import uuid
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -123,8 +122,8 @@ class LoginToken(models.Model):
         indexes = [models.Index(fields=["email", "purpose"])]
 
     @classmethod
-    def issue(cls, email: str, purpose: str, user: "User | None" = None,
-              ttl_minutes: int = 30) -> tuple["LoginToken", str]:
+    def issue(cls, email: str, purpose: str, user: User | None = None,
+              ttl_minutes: int = 30) -> tuple[LoginToken, str]:
         raw = secrets.token_urlsafe(32)
         token = cls.objects.create(
             email=email.lower(),
@@ -136,7 +135,7 @@ class LoginToken(models.Model):
         return token, raw
 
     @classmethod
-    def redeem(cls, raw: str, purpose: str) -> "LoginToken | None":
+    def redeem(cls, raw: str, purpose: str) -> LoginToken | None:
         try:
             token = cls.objects.get(token_hash=_hash_token(raw), purpose=purpose)
         except cls.DoesNotExist:

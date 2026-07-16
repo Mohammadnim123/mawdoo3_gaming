@@ -21,10 +21,12 @@ from django.conf import settings
 class GenerationApiError(Exception):
     """The service answered with its error envelope (or an unusable body)."""
 
-    def __init__(self, message: str, code: str = "api_error", status_code: int | None = None):
+    def __init__(self, message: str, code: str = "api_error", status_code: int | None = None,
+                 details: dict[str, Any] | None = None):
         super().__init__(message)
         self.code = code
         self.status_code = status_code
+        self.details = details or {}
 
 
 class GenerationApiUnavailable(GenerationApiError):
@@ -80,8 +82,42 @@ class GenerationApiClient:
             json={"instruction": instruction},
         )
 
+    def start_tweak_with_image(
+        self, game_id: str, instruction: str, image_base64: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/api/v1/games/{quote(game_id, safe='')}/tweaks",
+            json={"instruction": instruction, "image_base64": image_base64},
+        )
+
+    def save_source(self, game_id: str, game_js: str,
+                    game_css: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"game_js": game_js}
+        if game_css is not None:
+            body["game_css"] = game_css
+        return self._request(
+            "PUT", f"/api/v1/games/{quote(game_id, safe='')}/source", json=body
+        )
+
     def list_versions(self, game_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/games/{quote(game_id, safe='')}/versions")
+
+    def get_version_files(self, game_id: str, version_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            f"/api/v1/games/{quote(game_id, safe='')}/versions/{quote(version_id, safe='')}/files",
+        )
+
+    def get_events(self, job_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET", f"/api/v1/generations/{quote(job_id, safe='')}/events"
+        )
+
+    def get_draft(self, job_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET", f"/api/v1/generations/{quote(job_id, safe='')}/draft"
+        )
 
     def get_version_source(self, game_id: str, version_id: str) -> dict[str, Any]:
         return self._request(
@@ -170,10 +206,12 @@ class GenerationApiClient:
                     envelope = body["error"]
             except ValueError:
                 pass
+            details = envelope.get("details")
             raise GenerationApiError(
                 envelope.get("message") or f"{response.status_code} {response.reason}",
                 code=envelope.get("code", "api_error"),
                 status_code=response.status_code,
+                details=details if isinstance(details, dict) else None,
             )
         try:
             body = response.json()

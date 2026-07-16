@@ -61,11 +61,24 @@ class Comment(models.Model):
     reply_count = models.PositiveIntegerField(default=0)
     like_count = models.PositiveIntegerField(default=0)
     deleted = models.BooleanField(default=False)
+    edited_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["game", "parent", "-created_at"])]
+
+
+class CommentEdit(models.Model):
+    """A superseded comment body (edit history, newest first)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name="edits")
+    body = models.CharField(max_length=500)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class CommentLike(models.Model):

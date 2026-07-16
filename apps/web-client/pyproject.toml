@@ -25,6 +25,8 @@ packages = ["webclient", "games"]
 line-length = 100
 target-version = "py311"
 src = ["webclient", "games"]
+# Auto-generated Django migrations aren't held to hand-written style.
+extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

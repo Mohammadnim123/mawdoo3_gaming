@@ -1,26 +1,32 @@
 {% extends "base.html" %}
-{% block title %}{{ profile_user.display_name }} (@{{ profile_user.handle }}) · {{ site_name }}{% endblock %}
+{% load static %}
+{# /u/{handle} — the profile island (reference app/u/[handle]/page.tsx). The
+   handle is the only server prop; the screen self-fetches the profile, games
+   and (on your own handle) the liked/saved/history library tabs. Public,
+   indexable — title/description mirror the reference seo.profile metadata. #}
+{% block title %}{% if profile_user.display_name %}{{ profile_user.display_name }}{% else %}@{{ profile_user.handle }}{% endif %} · {{ site_name }}{% endblock %}
+{% block description %}{% if profile_user.bio %}{{ profile_user.bio }}{% else %}{{ t.hero_subtitle }}{% endif %}{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<div class="mb-8 flex flex-col items-center gap-3 text-center">
-  <span class="grid h-20 w-20 place-items-center rounded-full text-3xl font-semibold text-ink-on-accent" style="background-image:var(--gradient-cta)">{{ profile_user.display_name|first|upper|default:"U" }}</span>
-  <div>
-    <h1 class="fp-title-page text-ink">{{ profile_user.display_name }}</h1>
-    <p class="text-sm text-ink-muted">@{{ profile_user.handle }}</p>
+<script id="profile-island-props" type="application/json">{"handle": "{{ profile_user.handle|escapejs }}"}</script>
+<div id="profile-island">
+  {# Server skeleton mirroring ProfileScreen's isPending state. #}
+  <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8" aria-hidden="true">
+    <div class="flex items-center gap-4">
+      <div class="fp-pulse size-24 rounded-full bg-surface-2"></div>
+      <div class="flex flex-col gap-2">
+        <div class="fp-pulse h-6 w-48 rounded-2xl bg-surface-2"></div>
+        <div class="fp-pulse h-4 w-32 rounded-2xl bg-surface-2"></div>
+      </div>
+    </div>
+    <div class="fp-game-grid">
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+    </div>
   </div>
-  {% if profile_user.bio %}<p class="max-w-md text-sm text-ink-secondary">{{ profile_user.bio }}</p>{% endif %}
-  <div class="flex items-center gap-5 text-sm text-ink-secondary">
-    <span><b class="text-ink">{{ games|length }}</b> games</span>
-    <span><b class="text-ink">{{ profile_user.follower_count }}</b> followers</span>
-    <span><b class="text-ink">{{ profile_user.following_count }}</b> following</span>
-  </div>
-  {% if user.is_authenticated and user != profile_user %}
-    <form method="post" action="/users/{{ profile_user.handle }}/follow">{% csrf_token %}
-      <button class="fp-btn {% if viewer_following %}fp-btn-soft{% else %}fp-btn-cta{% endif %}" type="submit">
-        {% if viewer_following %}Following{% else %}Follow{% endif %}
-      </button>
-    </form>
-  {% endif %}
 </div>
-
-{% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/profile.js' %}"></script>
 {% endblock %}

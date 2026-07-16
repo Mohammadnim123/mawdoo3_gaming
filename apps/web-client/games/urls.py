@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.home, name="home"),
     path("create", views.create, name="create"),
     path("feed.json", views.feed_json, name="feed_json"),
+    path("studio", views.studio_home, name="studio_home"),
     path("studio/<uuid:game_id>", views.studio, name="studio"),
     path("studio/jobs/<uuid:job_ref_id>/stream", views.stream_proxy, name="stream"),
     path("studio/jobs/<uuid:job_ref_id>/status", views.job_status, name="job_status"),
@@ -24,4 +25,5 @@ urlpatterns = [
     ),
     path("games/<uuid:game_id>/rollback", views.game_rollback, name="rollback"),
     path("g/<slug:slug>", views.game_detail, name="detail"),
+    path("g/<slug:slug>/studio", views.game_studio_redirect, name="studio_redirect"),
 ]

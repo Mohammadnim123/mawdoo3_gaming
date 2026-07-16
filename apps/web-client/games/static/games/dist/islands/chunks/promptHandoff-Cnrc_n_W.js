@@ -1,0 +1,1 @@
+const e=n=>`fp:job-prompt:${n}`;function u(){try{return typeof window>"u"?null:window.sessionStorage}catch{return null}}function c(n,t,r=u()){try{r==null||r.setItem(e(n),t)}catch{}}function l(n,t=u()){try{return(t==null?void 0:t.getItem(e(n)))??null}catch{return null}}export{l as a,c as r};

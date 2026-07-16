@@ -1,23 +1,31 @@
 {% extends "base.html" %}
+{% load static %}
+{# /notifications — the inbox island (reference app/notifications/page.tsx).
+   The screen marks-read via POST /api/v1/me/notifications/read on mount
+   (reference behavior); the view keeps its @login_required gate.
+   Private surface → noindex (reference metadata).
+   NOTE: social/views.py:106 also auto-marks read while rendering THIS page,
+   before the island fetches — so rows arrive already read and the unread
+   highlight never shows. Island behavior is reference-correct; a later pass
+   removes the server-side mark. #}
 {% block title %}{{ t.nav_notifications }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
 {% block content %}
-<h1 class="fp-title-page mb-5 text-ink">{{ t.nav_notifications }}</h1>
-<ol class="grid gap-2">
-  {% for n in items %}
-    <li class="fp-card flex items-center gap-3 p-3 text-sm {% if not n.read %}border-edge-strong{% endif %}">
-      <span class="grid h-9 w-9 place-items-center rounded-full text-ink-on-accent" style="background-image:var(--gradient-cta)">{{ n.actor.display_name|first|upper }}</span>
-      <div class="min-w-0">
-        <a href="/u/{{ n.actor.handle }}" class="font-semibold text-ink">{{ n.actor.display_name }}</a>
-        <span class="text-ink-secondary">
-          {% if n.type == 'like' %}liked your game{% elif n.type == 'comment' %}commented{% elif n.type == 'reply' %}replied{% elif n.type == 'follow' %}followed you{% elif n.type == 'remix' %}remixed your game{% endif %}
-        </span>
-        {% if n.game %}<a href="/g/{{ n.game.slug }}" class="text-ink hover:underline">· {{ n.game.title_en|default:n.game.slug }}</a>{% endif %}
-        {% if n.comment_excerpt %}<div class="truncate text-xs text-ink-muted">“{{ n.comment_excerpt }}”</div>{% endif %}
-      </div>
-      <span class="ms-auto text-xs text-ink-muted">{{ n.created_at|date:"M j" }}</span>
-    </li>
-  {% empty %}
-    <li class="fp-card p-10 text-center text-ink-muted">No notifications yet.</li>
-  {% endfor %}
-</ol>
+<div id="notifications-island">
+  {# Server skeleton mirroring NotificationsScreen's pending state (5 rows). #}
+  <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-5 sm:py-8" aria-hidden="true">
+    <div class="fp-pulse h-9 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="flex flex-col gap-2">
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/notifications.js' %}"></script>
 {% endblock %}

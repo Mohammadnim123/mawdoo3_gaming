@@ -49,11 +49,11 @@ test-service:
 	cd $(SERVICE_DIR) && .venv/bin/python -m pytest -q
 
 test-web:
-	cd $(WEB_DIR) && .venv/bin/python manage.py test accounts core games social billing -v 1
+	cd $(WEB_DIR) && .venv/bin/python manage.py test accounts api core games social billing -v 1
 
 lint:
 	cd $(SERVICE_DIR) && .venv/bin/python -m ruff check src tests
-	cd $(WEB_DIR) && .venv/bin/python -m ruff check accounts core games social billing webclient
+	cd $(WEB_DIR) && .venv/bin/python -m ruff check accounts api core games social billing webclient
 
 # Kick off a generation from the terminal, e.g.:
 #   make demo PROMPT="Make a Flappy Bird clone"

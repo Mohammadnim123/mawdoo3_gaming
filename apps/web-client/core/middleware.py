@@ -34,3 +34,24 @@ class LocaleMiddleware:
                 secure=not settings.DEBUG,
             )
         return response
+
+
+class EnsureCsrfCookieMiddleware:
+    """Set the csrftoken cookie on every HTML page response.
+
+    The React islands call the /api/v1 contract with an X-CSRFToken header
+    read from this cookie; without it a fresh session's first mutation would
+    403. Calling get_token() marks the cookie for sending.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.middleware.csrf import get_token
+
+        if request.method == "GET" and not request.path.startswith(
+            ("/api/", "/static/", "/media/")
+        ):
+            get_token(request)
+        return self.get_response(request)

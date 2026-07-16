@@ -6,7 +6,10 @@ from django.core.mail import send_mail
 
 def _send(request, email: str, subject: str, path: str, blurb: str) -> None:
     link = request.build_absolute_uri(path)
-    body = f"{blurb}\n\n{link}\n\nThis link expires soon. If you didn't request it, ignore this email."
+    body = (
+        f"{blurb}\n\n{link}\n\n"
+        "This link expires soon. If you didn't request it, ignore this email."
+    )
     send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=True)
 
 

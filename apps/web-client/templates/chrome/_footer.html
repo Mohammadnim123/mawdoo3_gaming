@@ -1,18 +1,62 @@
-<footer class="mt-16 border-t border-edge-subtle">
-  <div class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-8 text-sm text-ink-muted md:flex-row md:items-center md:justify-between">
-    <div class="flex items-center gap-2">
-      <span dir="ltr" class="inline-flex items-center gap-1.5 fp-wordmark font-bold leading-none">
-        <svg class="size-[1.1em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-violet)" aria-hidden="true"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.544-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.152A4 4 0 0 0 17.32 5z"/></svg>
-        <span class="fp-gradient-text">Codply</span>
-      </span>
-      <span>· {{ t.tagline }}</span>
+{# Site footer — SSR twin of the reference components/nav/Footer.tsx.        #}
+{# Wordmark + tagline, Explore/Legal link groups (+ Discord when configured), #}
+{# and the © line. FLAT, tokens only, RTL-safe. Copy = footer_* i18n keys     #}
+{# (values copied verbatim from domain/legal/documents.ts footerContent).     #}
+<footer class="border-t border-edge-subtle bg-canvas">
+  <div class="mx-auto w-full max-w-6xl px-4 py-10">
+    <div class="flex flex-col gap-10 sm:flex-row sm:justify-between">
+      {# Brand block #}
+      <div class="flex flex-col gap-3">
+        <a href="/" aria-label="{{ t.footer_home_label }}" class="w-fit rounded-2xl">
+          {# <Logo className="text-xl" /> #}
+          <span dir="ltr" class="inline-flex items-center gap-2 font-[family-name:var(--font-brand)] font-bold leading-none text-xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-[1.15em] text-violet" aria-hidden="true"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></svg>
+            <span class="bg-clip-text font-display text-transparent" style="background-image:var(--gradient-cta)">Codply</span>
+          </span>
+        </a>
+        <p class="max-w-xs text-sm text-ink-secondary">{{ t.footer_tagline }}</p>
+        {% if discord_url %}
+          <a href="{{ discord_url }}" target="_blank" rel="noreferrer"
+             aria-label="{{ t.footer_discord }}" title="{{ t.footer_discord }}"
+             class="fp-hit inline-flex w-fit items-center gap-2 rounded-xl border border-edge bg-surface-1 px-3 py-1.5 text-sm text-ink-secondary transition-colors duration-200 ease-out hover:bg-surface-2 hover:text-ink">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 text-violet" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            {{ t.footer_discord }}
+          </a>
+        {% endif %}
+      </div>
+
+      {# Link groups #}
+      <nav aria-label="{{ t.footer_explore }}, {{ t.footer_legal }}" class="flex flex-wrap gap-10">
+        <div class="flex flex-col gap-3">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 text-cyan" aria-hidden="true"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>
+            {{ t.footer_explore }}
+          </p>
+          <ul class="flex flex-col gap-2">
+            <li><a href="/" class="text-sm text-ink-secondary transition-colors duration-150 ease-out hover:text-ink">{{ t.footer_feed }}</a></li>
+            <li><a href="/studio" class="text-sm text-ink-secondary transition-colors duration-150 ease-out hover:text-ink">{{ t.footer_create }}</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-3">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 text-cyan" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+            {{ t.footer_legal }}
+          </p>
+          <ul class="flex flex-col gap-2">
+            <li><a href="/privacy" class="text-sm text-ink-secondary transition-colors duration-150 ease-out hover:text-ink">{{ t.footer_privacy }}</a></li>
+            <li><a href="/terms" class="text-sm text-ink-secondary transition-colors duration-150 ease-out hover:text-ink">{{ t.footer_terms }}</a></li>
+          </ul>
+        </div>
+      </nav>
     </div>
-    <nav class="flex flex-wrap items-center gap-x-5 gap-y-2">
-      <a class="hover:text-ink" href="/">{{ t.nav_feed }}</a>
-      <a class="hover:text-ink" href="/create">{{ t.nav_create }}</a>
-      <a class="hover:text-ink" href="/privacy">Privacy</a>
-      <a class="hover:text-ink" href="/terms">Terms</a>
-      <a class="hover:text-ink" href="?lang={{ other_locale }}">{{ t.other_lang }}</a>
-    </nav>
+
+    {# Copyright bar #}
+    <div class="mt-10 flex flex-col gap-2 border-t border-edge-subtle pt-6 text-xs text-ink-muted sm:flex-row sm:items-center sm:justify-between">
+      <p><span dir="ltr">© 2026 Codply.</span> {{ t.footer_rights }}</p>
+      <p class="flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 text-pink" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        {{ t.footer_made_with }}
+      </p>
+    </div>
   </div>
 </footer>

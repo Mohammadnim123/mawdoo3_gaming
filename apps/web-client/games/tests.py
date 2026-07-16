@@ -183,12 +183,66 @@ class CreateFlowTests(TestCase):
         self.assertEqual(game.status, GameStatus.LIVE)
         self.assertEqual(game.title_en, "My Game")
         self.assertTrue(game.versions.exists())
-        self.assertContains(r, "iframe")
+        # The workspace is a React island now — the page ships the mount node
+        # plus its server-rendered props (the island talks to /api/v1/*).
+        self.assertContains(r, 'id="workspace-island"')
+        self.assertContains(r, 'id="workspace-island-props"')
+        self.assertContains(r, str(game.id))
         # Finalize mirrored THIS job's engine version (matched by job_id),
         # not the catalog's newest entry (svc-v2 belongs to another job).
         version = game.versions.get()
         self.assertEqual(version.service_version_id, "svc-v1")
         self.assertIn("/v1/index.html", version.play_url)
+
+
+class StudioRoutesTests(TestCase):
+    """The island-era studio URL shapes: /studio, /studio/{id}, /g/{slug}/studio."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="o@x.com", password="pass12345")
+
+    def test_studio_home_requires_login(self):
+        r = self.client.get("/studio")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login", r.headers["Location"])
+
+    def test_studio_home_renders_island_shell(self):
+        self.client.force_login(self.owner)
+        r = self.client.get("/studio")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="workspace-island"')
+        self.assertContains(r, 'id="workspace-island-props"')
+        self.assertContains(r, "dist/islands/workspace.js")
+        # Bare shell: no site chrome — the island renders its own top bar.
+        self.assertNotContains(r, "chrome/_topbar")
+
+    def test_studio_game_owner_only(self):
+        game = _live_public_game(self.owner)
+        stranger = User.objects.create_user(email="s@x.com", password="pass12345")
+        self.client.force_login(stranger)
+        self.assertEqual(self.client.get(f"/studio/{game.id}").status_code, 404)
+
+    def test_game_studio_redirects_owner_to_workspace(self):
+        game = _live_public_game(self.owner)
+        self.client.force_login(self.owner)
+        r = self.client.get("/g/my-game/studio")
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["Location"], f"/studio/{game.id}")
+
+    def test_game_studio_redirects_non_owner_to_game_page(self):
+        _live_public_game(self.owner)
+        r = self.client.get("/g/my-game/studio")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/g/my-game")
+
+    def test_create_renders_island_with_idea_props(self):
+        self.client.force_login(self.owner)
+        r = self.client.get("/create?idea=a+neon+snake+game")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="create-island"')
+        self.assertContains(r, 'id="create-island-props"')
+        self.assertContains(r, "a neon snake game")
+        self.assertContains(r, "dist/islands/create.js")
 
 
 class GameDetailTests(TestCase):

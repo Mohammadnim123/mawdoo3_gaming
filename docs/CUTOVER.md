@@ -1,10 +1,43 @@
 # P5 — Parity QA & Codply Cutover Plan
 
-Status date: 2026-07-16 (branch `feat/codply-migration`).
+Status date: 2026-07-16, **second pass — pixel-parity rebuild** (branch
+`feat/codply-migration`).
 
 Goal restated: a visitor believes they are using Codply; under the hood the
 platform is our Django web tier + our FastAPI generation engine. This document
 is the parity scorecard against Codply and the checklist to retire it.
+
+## 0. Second pass (pixel-parity rebuild) — what changed
+
+The first pass reached functional parity with hand-written templates/islands.
+The second pass rebuilt the user-facing layer to be **pixel-identical**:
+
+- **Django `api` app** serves Codply's exact JSON contract at `/api/v1/*`
+  (shapes from `frontend/src/vendor/contracts/schemas.ts`; session cookie +
+  `X-CSRFToken`; `{error, message, details}` envelopes). 36 contract tests.
+- **Every screen is a verbatim port of Codply's React components**, mounted
+  as islands (15 vite entries: workspace, create, feed, game, overlay,
+  account, settings, billing, dashboard, notifications, search, profile,
+  auth, chrome, legal). Codply's `@codply/{ui,game-runtime,contracts}`
+  packages are vendored under `frontend/src/vendor/` with vite aliases;
+  Next.js is shimmed (`frontend/src/next-shim/`). The full bilingual i18n
+  catalog, domain services/hooks/stores are ported verbatim.
+- **Chrome** (topbar/tabbar/footer) stays server-rendered with
+  reference-exact markup; a chrome island hydrates the interactive parts
+  (search combobox, notification bell, account menu w/ Credits dialog +
+  daily claim) with a seeded query cache — no flash.
+- **Previously "deliberate differences" are now shipped**: editable Code
+  view (lint-gated `PUT /source` → new immutable version; the editable file
+  is `game.js`), live draft view (`GET /jobs/{id}/draft` + `file` SSE
+  events), screenshot/image chat attachments (in-frame canvas capture via
+  bridge v1 + `image_base64` → LLM image blocks), console forwarding
+  (starter-template `engine.js` v1.1.0 speaks Codply bridge v1: console/
+  error/pause/resume/capture, legacy envelope kept), cover art
+  (`cover.png` from the painted background, procedural SVG fallback),
+  play-count pings (≥5s active play, 30-min session dedupe).
+- **Engine pipeline untouched** (game quality preserved); all engine work is
+  additive hooks/endpoints: draft store, event-log JSON, source edits,
+  tweak images, covers, step-completion frames.
 
 ---
 
@@ -31,28 +64,29 @@ Legend: ✅ shipped & verified · 🟡 shipped with a documented difference · �
 | Prompt composer (hero + feed + create) | ✅ | ✅ |
 | Live SSE generation with lossless replay (`Last-Event-ID`) | ✅ | ✅ engine event log + Django SSE proxy |
 | Step timeline with friendly labels | ✅ | ✅ `step` events (enhancing/planning/assets/codegen/qa/publishing) |
-| **Clarifying questions** (pause → one-tap answers → resume, Surprise me) | ✅ | ✅ engine `awaiting_input` + `/answers`; React ClarifyCards |
-| Agent transcript (activity/file/message rows) | ✅ (real tool events) | 🟡 synthesized: step + `heal` retry narration; island already renders the full vocabulary (`activity`/`file`/`message`) if the engine emits more later |
-| Stop / cancel | ✅ | ✅ engine `/cancel`, island Stop button |
+| **Clarifying questions** (pause → one-tap answers → resume, Surprise me) | ✅ | ✅ engine `awaiting_input` + `/answers`; verbatim ClarifyCards |
+| Agent transcript (activity/file/message rows) | ✅ (real tool events) | ✅ step (running/completed) + `file` + `heal` narration folded into the verbatim GenerationCard/PastJobCard; snapshot transcript via engine event-log JSON |
+| Stop / cancel | ✅ | ✅ engine `/cancel`, verbatim Stop button |
 | Chat edits (per-game mutex, in-place) | ✅ | ✅ tweak pipeline + one-active-job guard |
-| **Immutable versions + version tree + rollback** | ✅ | ✅ engine `games/{id}/v{n}` bundles, versions/source/rollback APIs, island VersionTree |
-| Code view (CodeMirror, file tabs) | ✅ editable index.html w/ lint gate | 🟡 read-only viewer (index.html / game.js / game.css); direct source editing is not in our engine's contract — edits go through chat |
-| Live draft code view while generating | ✅ | ⬜ our pipeline emits one bundle at the end; revisit if the engine streams files |
-| Console pane | ✅ console forwarding | 🟡 bridge events (`game_ready`/`game_over`/`game_error`); template SDK doesn't forward `console.*` |
-| Screenshot-to-chat, image attachments | ✅ | ⬜ engine prompt contract is text-only today |
+| **Immutable versions + version tree + rollback** | ✅ | ✅ engine `games/{id}/v{n}` bundles; verbatim HistorySheet w/ confirm + memory reset |
+| Code view (CodeMirror, file tabs) | ✅ editable index.html w/ lint gate | ✅ verbatim CodeView; editable file is `game.js` (template owns index.html); `PUT /source` → gate 422 findings → new immutable version |
+| Live draft code view while generating | ✅ | ✅ `file` SSE events + `GET /jobs/{id}/draft` polled by the verbatim DraftCodeView (snapshot at codegen/package, not token-streamed) |
+| Console pane | ✅ console forwarding | ✅ `engine.js` v1.1.0 forwards `console.*` + errors via bridge v1; verbatim ConsolePane w/ filters + Ask-AI-to-fix |
+| Screenshot-to-chat, image attachments | ✅ | ✅ in-frame canvas capture (bridge `capture`) + upload; `image_base64` on tweaks reaches the LLM as an image block (server-side render capture stubbed 404 → client falls back gracefully) |
 
 ### Player & feed
 | Sandboxed player (foreign origin + `sandbox="allow-scripts"`) | ✅ | ✅ identical double isolation |
 | Ready watchdog, reload card, fullscreen | ✅ | ✅ React GamePlayer |
-| **TikTok-style vertical overlay feed** (swipe / arrows / rail, infinite paging, URL sync) | ✅ | ✅ overlay island over `/feed.json` |
-| Feed (For You / New / Trending / Following, genre filter) | ✅ | ✅ |
-| Game page SEO (OG, JSON-LD), share bar, copy link | ✅ | ✅ |
-| Play-count ping | ✅ | ✅ server-side on game page views |
+| **TikTok-style vertical overlay feed** (swipe / arrows / rail, infinite paging, URL sync) | ✅ | ✅ verbatim PlayerOverlay; `/g/` links intercepted in-place on the feed AND site-wide via the chrome island |
+| Feed (For You / New / Trending / Following, genre filter) | ✅ | ✅ verbatim FeedScreen (inline comments, optimistic actions, infinite scroll) |
+| Game page SEO (OG, JSON-LD), share bar, copy link | ✅ | ✅ full VideoGame + interactionStatistic + BreadcrumbList; verbatim ShareBar (X/WhatsApp) |
+| Play-count ping | ✅ | ✅ `POST /games/{id}/play` — ≥5s active play, 30-min session dedupe, feed/direct/studio sources |
 
 ### Social
-| Likes, saves, shares, threaded comments (+delete) | ✅ | ✅ |
-| Follows + notifications + following feed | ✅ | ✅ |
-| Remix (+ lineage, counts) | ✅ | ✅ |
+| Likes, saves, shares, threaded comments (+delete) | ✅ | ✅ + comment edit w/ history dialog, comment likes, replies, tombstones, pagination |
+| Follows + notifications + following feed | ✅ | ✅ notifications JSON + unread badge (99+) + explicit mark-read |
+| Remix (+ lineage, counts) | ✅ | ✅ verbatim RemixButton dialog w/ first-change message |
+| Report game | ✅ | ✅ verbatim ReportMenu → `POST /report` |
 | Search | ✅ (pg_trgm) | 🟡 LIKE-based on SQLite dev; pg_trgm when Postgres is enabled |
 
 ### Billing & dashboard
@@ -64,23 +98,26 @@ Legend: ✅ shipped & verified · 🟡 shipped with a documented difference · �
 | Admin/CMS + moderation (reports, takedowns) | ✅ | ✅ Django admin |
 | robots.txt, sitemap.xml, /status, legal pages | ✅ | ✅ |
 | Engine quality: checkpointed retries, shared QA gate authority, ship-what-works | ✅ | ✅ our gate + best-effort salvage + `heal` narration |
-| Cover art from gameplay frame | ✅ | ⬜ needs headless capture; covers optional in our cards |
+| Cover art | ✅ from gameplay frame | ✅ from the game's own painted background (`cover.png`), procedural SVG fallback; gameplay-frame capture deferred (needs headless browser) |
 
 ---
 
-## 2. Verification evidence
+## 2. Verification evidence (second pass)
 
-- **149 automated tests green**: 100 engine (incl. clarify pause/resume/cancel,
-  immutable versions/rollback/source, restart semantics, seq continuity) +
-  49 Django (incl. answers/cancel proxies, versions JSON, rollback pointer
-  flip, feed.json, island props).
-- **Live smoke** (all three dev servers): home + overlay island wiring,
-  feed.json, static island bundles, signup/login, create → studio island
-  props → live SSE `step` frames through the proxy → cancel; legacy-game
-  version backfill verified against the real dev DB.
-- **Real-generation smoke** (real LLM key): create → clarify → publish v1 →
-  chat edit → v2 → both versions playable → rollback to v1 → public page.
-  (`scratchpad/real_smoke.py`; see latest run log.)
+- **226 automated tests green**: 120 engine (adds draft/events/source-edit/
+  tweak-image/cover coverage) + 106 Django (adds 36 contract-API tests +
+  chrome/legal/studio-route regression tests). `make lint` clean both sides.
+- **Live HTTP smoke** (all three dev servers, real CSRF+session): 28 checks —
+  signup/login/session-shim, feed w/ viewer state, like/save, comment →
+  reply → edit → history → comment-like → thread shape, play-ping dedupe,
+  follow → profile → notifications unread/read, claim-daily → 409 conflict,
+  ledger, subscription, suggested, search, report, logout.
+- **Real-generation smoke** (real LLM): create (AR locale) → done → v1 →
+  publish via PATCH → chat edit **with image attachment** → v2 → chat
+  history w/ per-job terminal states → hand-edited source → gate → v3
+  ("Hand-edited") → malicious source → 422 findings → rollback to v1 →
+  `cover.png` generated and served from the CDN origin w/ CORS; draft
+  files + `file`/step-completion events verified in the event log.
 
 ## 3. Remaining for production cutover
 
@@ -95,11 +132,23 @@ Legend: ✅ shipped & verified · 🟡 shipped with a documented difference · �
 5. **Retire Codply**: freeze its repo, archive the deployment, keep the
    read-only reference copy for a quarter.
 
-## 4. Deliberate non-goals (documented differences)
+## 4. Remaining documented differences (all minor)
 
-- No direct source editing / lint-gated saves (chat edits are the editing
-  model; our engine treats bundles as build outputs).
-- No live draft file stream during generation.
-- No in-frame screenshot/attachment pipeline.
-These are additive engine features; the islands already speak the full SSE
-vocabulary, so each can land later without web-tier rework.
+The first pass's "deliberate non-goals" have all shipped (see §0). What
+remains intentionally different:
+
+- **Draft view granularity**: draft files appear when codegen finishes (one
+  snapshot per stage), not token-by-token — our engine doesn't stream LLM
+  output mid-node.
+- **Server-side screenshot render**: `POST /games/{id}/screenshot` is a 404
+  stub (no headless browser); the composer's in-frame capture path works and
+  the client falls back gracefully — identical UX to a reference deployment
+  whose capture worker is down.
+- **Cover source**: covers come from the game's painted background rather
+  than a captured gameplay frame (same slot, different art source).
+- **Remix mechanics**: remixes re-generate from the source prompt (+ first
+  change) instead of cloning the source bundle server-side — same UX,
+  slower first paint, counts/lineage identical.
+- **OAuth**: routes + screens exist; providers stay disabled until client
+  ids are configured (`/auth/oauth/*/start` → generic login error, exactly
+  like a reference deployment with no providers configured).

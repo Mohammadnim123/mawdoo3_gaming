@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from generation_service.api.schemas import bundle_file_url
 from generation_service.application.events import JobEventBus
 from generation_service.application.job_runner import BackgroundJobRunner
 from generation_service.application.use_cases import (
     AnswerQuestionsUseCase,
     CancelGenerationUseCase,
+    EditSourceUseCase,
     GetGameUseCase,
     GetGenerationUseCase,
     GetVersionSourceUseCase,
@@ -38,6 +40,7 @@ from generation_service.infrastructure.persistence import (
     Database,
     SqliteGameRepository,
     SqliteGameVersionRepository,
+    SqliteJobDraftStore,
     SqliteJobEventStore,
     SqliteJobRepository,
     SqliteLlmCallLog,
@@ -63,6 +66,7 @@ class Container:
         self.versions = SqliteGameVersionRepository(self.database)
         self.llm_log = SqliteLlmCallLog(self.database)
         self.job_events = SqliteJobEventStore(self.database)
+        self.job_drafts = SqliteJobDraftStore(self.database)
         # In-process pub/sub for live SSE (API + workers share this process).
         self.job_event_bus = JobEventBus()
 
@@ -163,6 +167,9 @@ class Container:
             event_store=self.job_events,
             event_bus=self.job_event_bus,
             terminal_lock=self.terminal_lock,
+            drafts=self.job_drafts,
+            storage=self.storage,
+            bundle_url=lambda prefix, rel: bundle_file_url(prefix, rel, s),
         )
         self.start_generation = StartGenerationUseCase(
             jobs=self.jobs, runner=self.job_runner, run_generation=self.run_generation
@@ -192,6 +199,14 @@ class Container:
             self.games, self.versions, self.storage
         )
         self.rollback = RollbackUseCase(self.games, self.versions, self.jobs)
+        self.edit_source = EditSourceUseCase(
+            games=self.games,
+            versions=self.versions,
+            jobs=self.jobs,
+            gate=self.gate,
+            assembler=self.assembler,
+            storage=self.storage,
+        )
 
         logger.info(
             "container ready — template v%s, provider=%s, storage=%s",

@@ -6,7 +6,6 @@ import json
 from datetime import datetime
 
 from generation_service.domain.blueprint import GameBlueprint
-from generation_service.domain.events import JobEvent
 from generation_service.domain.entities import (
     ClarifyQuestion,
     Game,
@@ -20,6 +19,7 @@ from generation_service.domain.entities import (
     PipelineStage,
     utcnow,
 )
+from generation_service.domain.events import JobEvent
 from generation_service.infrastructure.persistence.database import Database
 
 
@@ -37,8 +37,8 @@ class SqliteGameRepository:
             INSERT INTO games (id, title_en, title_ar, genre, summary, default_locale,
                                prompt, blueprint_json, template_version, blueprint_model,
                                code_model, storage_prefix, current_version_id,
-                               current_version_no, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               current_version_no, cover_file, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 game.id,
@@ -55,6 +55,7 @@ class SqliteGameRepository:
                 game.storage_prefix,
                 game.current_version_id,
                 game.current_version_no,
+                game.cover_file,
                 _iso(game.created_at),
             ),
         )
@@ -65,7 +66,7 @@ class SqliteGameRepository:
             UPDATE games SET title_en = ?, title_ar = ?, genre = ?, summary = ?,
                              default_locale = ?, blueprint_json = ?, template_version = ?,
                              blueprint_model = ?, code_model = ?, storage_prefix = ?,
-                             current_version_id = ?, current_version_no = ?
+                             current_version_id = ?, current_version_no = ?, cover_file = ?
             WHERE id = ?
             """,
             (
@@ -81,6 +82,7 @@ class SqliteGameRepository:
                 game.storage_prefix,
                 game.current_version_id,
                 game.current_version_no,
+                game.cover_file,
                 game.id,
             ),
         )
@@ -99,7 +101,7 @@ class SqliteGameRepository:
         cursor = await self._db.connection.execute(
             """
             SELECT id, title_en, title_ar, genre, summary, default_locale, prompt,
-                   template_version, storage_prefix, created_at
+                   template_version, storage_prefix, cover_file, created_at
             FROM games ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
             """,
             (limit, offset),
@@ -116,6 +118,7 @@ class SqliteGameRepository:
                 prompt=row["prompt"],
                 template_version=row["template_version"],
                 storage_prefix=row["storage_prefix"],
+                cover_file=row["cover_file"],
                 created_at=datetime.fromisoformat(row["created_at"]),
             )
             for row in rows
@@ -143,6 +146,7 @@ class SqliteGameRepository:
             storage_prefix=row["storage_prefix"],
             current_version_id=row["current_version_id"],
             current_version_no=row["current_version_no"],
+            cover_file=row["cover_file"],
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 
@@ -505,3 +509,26 @@ class SqliteJobEventStore:
         )
         row = await cursor.fetchone()
         return int(row["n"]) if row else 0
+
+
+class SqliteJobDraftStore:
+    """Live draft snapshot per job (Codply JobDraft shape) — upserted as the
+    pipeline writes code, read by GET /generations/{id}/draft."""
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def save(self, job_id: str, draft: dict) -> None:
+        await self._db.execute_write(
+            "INSERT INTO job_drafts (job_id, draft_json, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(job_id) DO UPDATE SET draft_json = excluded.draft_json, "
+            "updated_at = excluded.updated_at",
+            (job_id, json.dumps(draft, ensure_ascii=False), _iso(utcnow())),
+        )
+
+    async def get(self, job_id: str) -> dict | None:
+        cursor = await self._db.connection.execute(
+            "SELECT draft_json FROM job_drafts WHERE job_id = ?", (job_id,)
+        )
+        row = await cursor.fetchone()
+        return json.loads(row["draft_json"]) if row else None

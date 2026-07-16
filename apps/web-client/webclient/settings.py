@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "games",
     "social",
     "billing",
+    "api",
 ]
 
 MIDDLEWARE = [
@@ -92,6 +93,9 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Resolves the active locale (fp_locale cookie) → request.locale / request.text_dir.
     "core.middleware.LocaleMiddleware",
+    # Guarantees the csrftoken cookie on page loads so island fetches can
+    # send X-CSRFToken without a prior form render.
+    "core.middleware.EnsureCsrfCookieMiddleware",
 ]
 
 ROOT_URLCONF = "webclient.urls"
@@ -184,7 +188,7 @@ STORAGES = {
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
 
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "var" / "media"
 
 # --------------------------------------------------------------------------

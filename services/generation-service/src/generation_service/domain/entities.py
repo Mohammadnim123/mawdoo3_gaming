@@ -196,6 +196,10 @@ class Game:
     storage_prefix: str
     current_version_id: str | None = None
     current_version_no: int = 1
+    # Cover art file inside the current version's bundle ("cover.png" when the
+    # build painted a backdrop, "cover.svg" for the procedural poster). None
+    # for games built before covers existed (backfill not required).
+    cover_file: str | None = None
     created_at: datetime = field(default_factory=utcnow)
 
     def apply_blueprint(self, blueprint: GameBlueprint) -> None:
@@ -240,6 +244,7 @@ class GameSummary:
     template_version: str
     storage_prefix: str
     created_at: datetime
+    cover_file: str | None = None
 
 
 @dataclass(slots=True)

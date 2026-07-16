@@ -50,6 +50,14 @@ from generation_service.infrastructure.validation.gate import QualityGate
 logger = logging.getLogger(__name__)
 
 
+def _image_kwargs(state: GenerationState) -> dict:
+    """Kwargs for StructuredLlm.generate when the run carries a reference
+    image (tweak attachments). Empty — leaving the call untouched — when no
+    image is present, so image-less runs are byte-identical to before."""
+    image = state.get("image_b64")
+    return {"image_b64": image} if image else {}
+
+
 class GenerationNodes:
     def __init__(
         self,
@@ -148,7 +156,7 @@ class GenerationNodes:
             state["tweak_instruction"],
         )
         blueprint, usage = await self._blueprint_llm.generate(
-            "blueprint_revision", system, user, GameBlueprint
+            "blueprint_revision", system, user, GameBlueprint, **_image_kwargs(state)
         )
         await self._llm_log.record(state["job_id"], usage)
         return {"blueprint": blueprint}
@@ -251,7 +259,7 @@ class GenerationNodes:
             art_section,
         )
         code, usage = await self._code_llm.generate(
-            "code_generation", system, user, GeneratedGameCode
+            "code_generation", system, user, GeneratedGameCode, **_image_kwargs(state)
         )
         await self._llm_log.record(state["job_id"], usage)
         return {"code": code, "code_attempts": attempts + 1}

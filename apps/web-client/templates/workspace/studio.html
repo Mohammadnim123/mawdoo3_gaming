@@ -1,64 +1,25 @@
-{% extends "base.html" %}
+{% extends "base_bare.html" %}
 {% load game_extras static %}
-{% block title %}{% if game.is_live %}{{ game|loc_title:locale }}{% else %}{{ t.nav_create }}{% endif %} · {{ site_name }}{% endblock %}
-{% block main_class %}mx-auto w-full max-w-6xl px-4 pb-24 pt-6{% endblock %}
+{% block title %}{% if game %}{{ game|loc_title:locale }} · {% endif %}{{ t.nav_create }} · {{ site_name }}{% endblock %}
 {% block content %}
-<div class="mb-4 flex items-center gap-3">
-  <div class="min-w-0">
-    <h1 class="fp-title-section truncate text-ink">
-      {% if game.is_live %}{{ game|loc_title:locale }}{% else %}{{ t.ws_thinking }}{% endif %}
-    </h1>
-    <p class="truncate text-xs text-ink-muted">{{ game.prompt }}</p>
-  </div>
-  {% if game.is_live %}
-  <form method="post" action="/games/{{ game.id }}/post" class="ms-auto flex items-center gap-2">
-    {% csrf_token %}
-    <select name="visibility" class="fp-input py-1.5 text-sm" style="width:auto">
-      <option value="public">Public</option>
-      <option value="unlisted">Unlisted</option>
-      <option value="private" {% if game.visibility == 'private' %}selected{% endif %}>Private</option>
-    </select>
-    <button class="fp-btn fp-btn-cta fp-btn-sm" type="submit">{{ t.ws_post }}</button>
-  </form>
-  {% endif %}
-</div>
-
-{% if show_island %}
-  {# React workspace island: live SSE generation, clarify cards, chat edit, #}
-  {# Code view, version tree. Props are server-rendered; session cookie auth. #}
-  {{ island_props|json_script:"workspace-props" }}
-  <div id="workspace-island" class="min-h-[60vh]">
-    <div class="fp-card flex min-h-[40vh] items-center justify-center p-6 text-sm text-ink-muted">
+{# The studio workspace island owns the WHOLE viewport (its own top bar,     #}
+{# chat pane, game/library/code views — reference WorkspaceShell). The main  #}
+{# element mirrors AppChrome's workspace branch: h-dvh + overflow clip; the  #}
+{# document itself is scroll-locked by base_bare.                            #}
+{{ island_props|json_script:"workspace-island-props" }}
+<main id="content" style="height:100dvh;min-height:0;overflow:hidden">
+  <div id="workspace-island" class="h-full min-h-0">
+    <div class="flex h-full items-center justify-center text-sm text-ink-muted">
       <span class="fp-shimmer">{{ t.loading }}</span>
     </div>
   </div>
-  <noscript>
-    {% if active %}
-      <div class="fp-card mt-3 p-4 text-sm text-ink-secondary">
-        <meta http-equiv="refresh" content="4">
-        {{ t.ws_thinking }}
-      </div>
-    {% elif game.is_live %}
-      <div class="fp-card overflow-hidden">
-        <div class="relative w-full" style="aspect-ratio:16/10;background:var(--color-surface-2)">
-          <iframe title="{{ game|loc_title:locale }}"
-                  class="absolute inset-0 h-full w-full"
-                  src="{{ game_src }}" sandbox="allow-scripts"
-                  referrerpolicy="no-referrer" allow="fullscreen"></iframe>
-        </div>
-      </div>
-    {% endif %}
-  </noscript>
-{% else %}
-  <div class="fp-card p-8 text-center">
-    <div class="mb-2 text-lg font-semibold text-ink">{{ t.gen_failed }}</div>
-    <p class="mb-4 text-ink-secondary">{{ t.gen_failed_message }}</p>
-    <a href="/create?idea={{ game.prompt|urlencode }}" class="fp-btn fp-btn-cta">← {{ t.nav_create }}</a>
+</main>
+<noscript>
+  <div class="fp-card fixed inset-x-4 top-4 z-50 p-4 text-sm text-ink-secondary">
+    {{ t.gen_failed_message }}
   </div>
-{% endif %}
+</noscript>
 {% endblock %}
 {% block scripts %}
-{% if show_island %}
-  <script type="module" src="{% static 'games/dist/islands/workspace.js' %}"></script>
-{% endif %}
+<script type="module" src="{% static 'games/dist/islands/workspace.js' %}"></script>
 {% endblock %}

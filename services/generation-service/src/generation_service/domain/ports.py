@@ -115,6 +115,16 @@ class LlmCallLog(Protocol):
     async def usage_for_job(self, job_id: str) -> list[LlmUsage]: ...
 
 
+class JobDraftStore(Protocol):
+    """Live draft snapshot per job: the code as it is being written, available
+    while the job runs and after failures (Code view + recovery). The draft is
+    the Codply JobDraft shape: {content: str|None, files: [{path, content}]}."""
+
+    async def save(self, job_id: str, draft: dict) -> None: ...
+
+    async def get(self, job_id: str) -> dict | None: ...
+
+
 class JobEventStore(Protocol):
     """Ordered, replayable log of a job's progress events (for SSE reconnect)."""
 

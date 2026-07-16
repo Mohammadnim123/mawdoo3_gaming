@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS games (
     blueprint_model  TEXT NOT NULL,
     code_model       TEXT NOT NULL,
     storage_prefix   TEXT NOT NULL,
+    cover_file       TEXT,
     created_at       TEXT NOT NULL
 );
 
@@ -81,6 +82,12 @@ CREATE TABLE IF NOT EXISTS job_events (
     PRIMARY KEY (job_id, seq)
 );
 
+CREATE TABLE IF NOT EXISTS job_drafts (
+    job_id     TEXT PRIMARY KEY,
+    draft_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_games_created_at ON games (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_job_id ON llm_calls (job_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_game_status ON generation_jobs (game_id, status);
@@ -101,6 +108,7 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "summary": "TEXT NOT NULL DEFAULT ''",
         "current_version_id": "TEXT",
         "current_version_no": "INTEGER NOT NULL DEFAULT 1",
+        "cover_file": "TEXT",
     },
 }
 

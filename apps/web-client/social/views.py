@@ -7,11 +7,10 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
-
 from games.models import Game, GameStatus, Visibility
 
 from . import services
-from .models import Comment, Notification
+from .models import Comment
 
 User = get_user_model()
 
@@ -84,7 +83,8 @@ def comment_add(request, game_id):
 @require_POST
 @login_required(login_url="/login")
 def comment_delete(request, comment_id):
-    comment = get_object_or_404(Comment.objects.select_related("game", "game__owner"), id=comment_id)
+    comment = get_object_or_404(
+        Comment.objects.select_related("game", "game__owner"), id=comment_id)
     if not (comment.user_id == request.user.id
             or comment.game.owner_id == request.user.id
             or request.user.is_admin):
@@ -106,9 +106,10 @@ def follow(request, handle):
 @require_GET
 @login_required(login_url="/login")
 def notifications(request):
+    # Rows keep their unread state through the render — the notifications
+    # island marks them read explicitly (POST /api/v1/me/notifications/read),
+    # so unread highlights actually show, like the reference.
     items = list(request.user.notifications.select_related("actor", "game")[:50])
-    # Mark unread as read once viewed.
-    request.user.notifications.filter(read=False).update(read=True)
     return render(request, "social/notifications.html", {"items": items})
 
 
