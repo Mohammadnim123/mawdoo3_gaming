@@ -36,8 +36,9 @@ QUESTIONS = [
 class FakeClient:
     """Mirrors the engine's public API shapes (see generation-service DTOs)."""
 
-    def __init__(self, generation_status="succeeded"):
+    def __init__(self, generation_status="succeeded", error=None):
         self._generation_status = generation_status
+        self._error = error
         self.answers_submitted = None
         self.cancelled = False
         self.rolled_back_to = None
@@ -52,6 +53,8 @@ class FakeClient:
         if self._generation_status == "awaiting_input":
             snap["stage"] = "clarifying"
             snap["questions"] = QUESTIONS
+        if self._error:
+            snap["error"] = self._error
         return snap
 
     def get_game(self, game_id):
@@ -277,6 +280,21 @@ class ClarifyFlowTests(TestCase):
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, JobStatus.CANCELLED)
 
+    @patch("games.views.get_client")
+    @patch("games.sync.get_client")
+    def test_sync_maps_engine_cancel_to_cancelled(self, sync_client, _views_client):
+        """The engine records a creator cancel as failed+error_code=cancelled;
+        the local mirror must keep the distinct CANCELLED status so the
+        workspace shows 'stopped', not a failure card."""
+        sync_client.return_value = FakeClient(
+            generation_status="failed",
+            error={"code": "cancelled", "message": "cancelled by the creator"},
+        )
+        r = self.client.get(f"/studio/jobs/{self.job.id}/status")
+        self.assertEqual(r.json()["status"], "cancelled")
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, JobStatus.CANCELLED)
+
 
 class VersionsApiTests(TestCase):
     def setUp(self):
@@ -329,6 +347,27 @@ class VersionsApiTests(TestCase):
         self.assertEqual(fake.rolled_back_to, "svc-v1")
         self.game.refresh_from_db()
         self.assertEqual(self.game.current_version_id, self.v1.id)
+
+    @patch("games.views.get_client")
+    def test_rollback_refused_while_job_active(self, views_client):
+        """A rollback mid-rebuild must be refused, never half-applied — the
+        engine would reject it and the local pointer must not diverge."""
+        fake = FakeClient()
+        views_client.return_value = fake
+        GenerationJobRef.objects.create(
+            service_job_id="svc-job-9", user=self.owner, game=self.game,
+            status=JobStatus.RUNNING,
+        )
+        r = self.client.post(
+            f"/games/{self.game.id}/rollback",
+            data=f'{{"version_id": "{self.v1.id}"}}',
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(r.status_code, 409)
+        self.assertIsNone(fake.rolled_back_to)  # engine never called
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.current_version_id, self.v2.id)  # unchanged
 
 
 class FeedJsonTests(TestCase):

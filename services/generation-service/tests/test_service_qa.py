@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 
 import pytest
-from tests.conftest import boot_client
+from tests.conftest import boot_client, drain_job
 
 
 def _fake_pipeline(monkeypatch, *, outcome: str):
@@ -38,13 +38,7 @@ def _fake_pipeline(monkeypatch, *, outcome: str):
 
 
 def _drain(client, job_id, statuses=("succeeded", "failed"), tries=100):
-    snap = client.get(f"/api/v1/generations/{job_id}").json()
-    for _ in range(tries):
-        if snap.get("status") in statuses:
-            return snap
-        time.sleep(0.05)
-        snap = client.get(f"/api/v1/generations/{job_id}").json()
-    return snap
+    return drain_job(client, job_id, statuses=statuses, tries=tries)
 
 
 def test_generation_lifecycle_events_and_sse(tmp_path, monkeypatch):

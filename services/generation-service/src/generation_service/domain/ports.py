@@ -71,7 +71,14 @@ class JobRepository(Protocol):
         self, job_id: str, questions: list[ClarifyQuestion], analysis_json: str
     ) -> None: ...
 
-    async def set_answers(self, job_id: str, answers: dict[str, str]) -> None: ...
+    async def set_answers(self, job_id: str, answers: dict[str, str]) -> bool:
+        """CAS: persist answers + QUEUED only if still AWAITING_INPUT; False
+        means a concurrent submit/cancel won and no resume must be scheduled."""
+        ...
+
+    async def expire_stale_awaiting(
+        self, error_code: str, error_message: str, max_age_hours: float
+    ) -> int: ...
 
     async def has_active_job_for_game(self, game_id: str) -> bool: ...
 
@@ -102,7 +109,10 @@ class LlmCallLog(Protocol):
 class JobEventStore(Protocol):
     """Ordered, replayable log of a job's progress events (for SSE reconnect)."""
 
-    async def append(self, job_id: str, event: JobEvent) -> None: ...
+    async def append(self, job_id: str, event: JobEvent) -> bool:
+        """Persist the event; False when (job_id, seq) already exists (two
+        emitters racing — the caller must retry on a later seq)."""
+        ...
 
     async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]: ...
 

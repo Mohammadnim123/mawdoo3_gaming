@@ -107,6 +107,14 @@ class RunGenerationUseCase:
         self._event_bus = event_bus
 
     async def execute(self, job: GenerationJob, resume: bool = False) -> None:
+        # A cancel can land between scheduling and this task actually starting
+        # (e.g. right after answers resumed the job) — never run, and never
+        # flip the row back to RUNNING, once it is terminal.
+        current = await self._jobs.get(job.id)
+        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
+            logger.info("job %s already terminal (%s); skipping run", job.id, current.status)
+            return
+
         # Resumed jobs continue the same event log — seed the seq counter from
         # what is already persisted so ids stay monotonic across the pause.
         start_seq = await self._event_store.last_seq(job.id) if resume else 0
@@ -167,6 +175,16 @@ class RunGenerationUseCase:
         accumulated: GenerationState = dict(state)  # type: ignore[assignment]
         last_step: str | None = None
         heal_attempts = 0
+
+        if resume:
+            # Make the resume visible immediately: the next pipeline yield is
+            # tens of seconds away (the blueprint LLM call), and until an event
+            # newer than 'questions' lands, a reloading client would replay the
+            # log and re-render the already-answered clarify cards.
+            last_step = "planning"
+            await self._emit_safe(emitter, "step", {
+                "step": "planning", "label": "Designing your game", "status": "running",
+            })
 
         try:
             async with asyncio.timeout(self._timeout_seconds):
@@ -297,6 +315,17 @@ class RunGenerationUseCase:
         """Persist success or gate failure. Runs inside the same error net as
         the pipeline: if persistence itself fails, the job is marked failed
         instead of being stranded in 'running'."""
+        # A creator cancel that landed during the final pipeline awaits must
+        # win: never publish over a terminal row (the bundle bytes are already
+        # stored, but no game/version/succeeded record is created).
+        current = await self._jobs.get(job.id)
+        if current is not None and current.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
+            logger.info(
+                "job %s became terminal (%s) mid-run; discarding outcome",
+                job.id, current.status,
+            )
+            return
+
         gate_report = accumulated.get("gate_report")
         failure = accumulated.get("failure")
         if failure is not None:

@@ -126,6 +126,9 @@ class PipelineSettings(_Base):
     generation_timeout_seconds: float = 900.0
     # Concurrent pipeline runs; submissions beyond the cap wait in QUEUED.
     generation_max_concurrent: int = 4
+    # AWAITING_INPUT jobs older than this are expired at startup — paused jobs
+    # survive restarts, so something must eventually reap the abandoned ones.
+    clarify_answer_ttl_hours: float = 48.0
     gate_node_syntax_check: bool = True
     gate_syntax_check_timeout_seconds: float = 20.0
     gate_smoke_boot: bool = True

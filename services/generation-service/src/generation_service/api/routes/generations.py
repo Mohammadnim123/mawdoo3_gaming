@@ -14,6 +14,7 @@ from generation_service.api.schemas import (
     GenerationResponse,
 )
 from generation_service.container import Container
+from generation_service.domain.entities import JobStatus
 from generation_service.domain.events import JobEvent
 
 router = APIRouter(prefix="/api/v1/generations", tags=["generations"])
@@ -84,9 +85,13 @@ async def stream_generation(
     Subscribes first (so no event produced mid-setup is lost), replays the
     persisted log after ``Last-Event-ID``, then relays live events until a
     terminal one. Reconnects resume losslessly from the header.
+
+    A job can be terminal WITHOUT a terminal event in the log (failed by the
+    restart sweep, or the failure emit itself failed) — for those, a terminal
+    frame is synthesized from the job row so no client waits forever.
     """
     # 404 (via the error handler) if the job doesn't exist — before we stream.
-    await container.get_generation.execute(job_id)
+    job = await container.get_generation.execute(job_id)
 
     bus = container.job_event_bus
     store = container.job_events
@@ -97,13 +102,30 @@ async def stream_generation(
 
     queue = bus.subscribe(job_id)
 
+    def synthesized_terminal(seq: int) -> JobEvent | None:
+        if job.status == JobStatus.FAILED:
+            return JobEvent(seq=seq + 1, event="failed", data={
+                "error_code": job.error_code or "pipeline_error",
+                "error_user_msg": job.error_message or "This generation did not finish.",
+            })
+        if job.status == JobStatus.SUCCEEDED:
+            return JobEvent(seq=seq + 1, event="done", data={"game_id": job.game_id})
+        return None
+
     async def gen():
         nonlocal last_seq
         try:
+            saw_terminal = False
             for event in await store.list_since(job_id, last_seq):
                 yield _sse_frame(event)
                 last_seq = event.seq
                 if event.event in _TERMINAL_EVENTS:
+                    saw_terminal = True
+                    return
+            if not saw_terminal:
+                synthetic = synthesized_terminal(last_seq)
+                if synthetic is not None:
+                    yield _sse_frame(synthetic)
                     return
             while True:
                 if await request.is_disconnected():

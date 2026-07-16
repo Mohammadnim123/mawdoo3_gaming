@@ -55,11 +55,19 @@ def sync_job(job_ref: GenerationJobRef) -> GenerationJobRef:
         return job_ref
 
     status = _ENGINE_STATUS.get(snap.get("status", ""), job_ref.status)
+    err = snap.get("error") or {}
+    error_code = (err.get("code") or "")[:64]
+    # The engine records creator cancels / clarify timeouts as FAILED with a
+    # distinguishing error code — surface them as their own local statuses so
+    # the workspace shows "stopped" instead of a red failure card.
+    if status == JobStatus.FAILED and error_code == "cancelled":
+        status = JobStatus.CANCELLED
+    elif status == JobStatus.FAILED and error_code == "expired":
+        status = JobStatus.EXPIRED
     job_ref.status = status
     job_ref.stage = snap.get("stage") or job_ref.stage
     job_ref.questions = snap.get("questions") or []
-    err = snap.get("error") or {}
-    job_ref.error_code = (err.get("code") or "")[:64]
+    job_ref.error_code = error_code
     job_ref.error_message = (err.get("message") or "")[:280]
 
     game = job_ref.game
@@ -94,23 +102,24 @@ def _finalize_success(client, job_ref: GenerationJobRef, game: Game, svc_game_id
     game.summary_ar = summary or game.summary_ar
     game.default_locale = svc.get("default_locale", "en") or "en"
 
-    # The engine's version catalog is the source of truth: mirror the real
-    # version id + immutable per-version play_url (the engine now stores every
-    # build under games/{id}/v{n}). Falls back to the game-level play_url for
-    # engines predating versions.
+    # The engine's version catalog is the source of truth: mirror THE version
+    # this job produced (matched by the engine job id — the newest row is not
+    # necessarily ours when syncs arrive out of order). Falls back to the
+    # game-level play_url with no version link when the catalog is unreachable.
     from django.db.models import Max
 
     local_max = game.versions.aggregate(n=Max("version_no"))["n"] or 0
     version_no = local_max + 1
-    svc_version_id = svc_game_id
+    svc_version_id = ""
     play_url = svc.get("play_url", "") or ""
     try:
         items = client.list_versions(svc_game_id).get("items") or []
-        if items:
-            newest = items[-1]
-            svc_version_id = newest.get("id") or svc_version_id
-            play_url = newest.get("play_url") or play_url
-            engine_no = int(newest.get("version_no") or 0)
+        mine = [v for v in items if v.get("job_id") == job_ref.service_job_id]
+        engine_version = mine[-1] if mine else (items[-1] if items else None)
+        if engine_version:
+            svc_version_id = engine_version.get("id") or ""
+            play_url = engine_version.get("play_url") or play_url
+            engine_no = int(engine_version.get("version_no") or 0)
             if engine_no > local_max:  # never collide with (game, version_no)
                 version_no = engine_no
     except GenerationApiError:

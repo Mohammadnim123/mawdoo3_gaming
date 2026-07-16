@@ -303,12 +303,22 @@ class SqliteJobRepository:
             ),
         )
 
-    async def set_answers(self, job_id: str, answers: dict[str, str]) -> None:
-        await self._touch(
-            job_id,
-            "answers_json = ?, status = ?",
-            (json.dumps(answers), JobStatus.QUEUED.value),
+    async def set_answers(self, job_id: str, answers: dict[str, str]) -> bool:
+        """Compare-and-set: answers only land on a job still awaiting them.
+        Returns False when something else (a second submit, a cancel) already
+        moved the job on — the caller must NOT schedule a resume then."""
+        rows = await self._db.execute_write(
+            "UPDATE generation_jobs SET answers_json = ?, status = ?, updated_at = ? "
+            "WHERE id = ? AND status = ?",
+            (
+                json.dumps(answers),
+                JobStatus.QUEUED.value,
+                _iso(utcnow()),
+                job_id,
+                JobStatus.AWAITING_INPUT.value,
+            ),
         )
+        return rows > 0
 
     async def has_active_job_for_game(self, game_id: str) -> bool:
         placeholders = ", ".join("?" for _ in JobStatus.active())
@@ -318,6 +328,28 @@ class SqliteJobRepository:
             (game_id, *[s.value for s in JobStatus.active()]),
         )
         return await cursor.fetchone() is not None
+
+    async def expire_stale_awaiting(
+        self, error_code: str, error_message: str, max_age_hours: float
+    ) -> int:
+        """Fail AWAITING_INPUT jobs whose questions went unanswered for too
+        long — without this they would accumulate forever (paused jobs are
+        deliberately exempt from the restart sweep)."""
+        from datetime import timedelta
+
+        cutoff = _iso(utcnow() - timedelta(hours=max_age_hours))
+        return await self._db.execute_write(
+            "UPDATE generation_jobs SET status = ?, error_code = ?, error_message = ?, "
+            "updated_at = ? WHERE status = ? AND updated_at < ?",
+            (
+                JobStatus.FAILED.value,
+                error_code,
+                error_message,
+                _iso(utcnow()),
+                JobStatus.AWAITING_INPUT.value,
+                cutoff,
+            ),
+        )
 
     async def fail_abandoned(self, error_code: str, error_message: str) -> int:
         """Fail every job whose asyncio task died with the previous process —
@@ -420,12 +452,13 @@ class SqliteJobEventStore:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    async def append(self, job_id: str, event: JobEvent) -> None:
-        await self._db.execute_write(
+    async def append(self, job_id: str, event: JobEvent) -> bool:
+        rows = await self._db.execute_write(
             "INSERT OR IGNORE INTO job_events (job_id, seq, event, data_json, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
             (job_id, event.seq, event.event, json.dumps(event.data), _iso(utcnow())),
         )
+        return rows > 0
 
     async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]:
         cursor = await self._db.connection.execute(

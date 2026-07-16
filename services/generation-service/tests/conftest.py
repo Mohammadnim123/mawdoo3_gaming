@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,43 @@ from generation_service.domain.blueprint import (
 from generation_service.domain.entities import GeneratedGameCode
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[3] / "packages" / "starter-template"
+
+
+def drain_job(client, job_id, statuses=("succeeded", "failed"), tries=100):
+    """Poll a generation until it reaches one of the given statuses — the one
+    shared polling helper for every app-level suite."""
+    snap = client.get(f"/api/v1/generations/{job_id}").json()
+    for _ in range(tries):
+        if snap.get("status") in statuses:
+            return snap
+        time.sleep(0.05)
+        snap = client.get(f"/api/v1/generations/{job_id}").json()
+    return snap
+
+
+def build_sample_blueprint() -> GameBlueprint:
+    """A small valid blueprint usable from module scope (fixtures can't be
+    called inside fake pipelines)."""
+    return GameBlueprint(
+        title=LocalizedText(en="Jungle Run", ar="عدّاء الأدغال"),
+        genre=Genre.ARCADE,
+        summary="Run through the jungle collecting fruit.",
+        core_rule="Collect fruit; hitting a rock ends the run.",
+        win_condition="Collect 20 fruit",
+        lose_condition="Hit a rock",
+        rules=["Fruit adds one point", "Rocks end the game", "Speed rises over time"],
+        controls=[Control(input="touch", action="tap to jump")],
+        difficulty="speed ramps",
+        rendering="canvas",
+        default_locale="en",
+        visual_style="lowpoly-nature look, palette bg #A5D8CE etc.",
+        entities=["runner", "fruit", "rock"],
+        tweaks=[TweakParameter(name="speed", description="run speed", value=4)],
+        ui_strings=[
+            UiString(key="title", en="Jungle Run", ar="عدّاء الأدغال"),
+            UiString(key="game_over", en="Game over", ar="انتهت اللعبة"),
+        ],
+    )
 
 
 def boot_client(tmp_path, monkeypatch, **env: str):

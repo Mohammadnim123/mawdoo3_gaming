@@ -73,6 +73,7 @@ class FailureCode(StrEnum):
     GAME_NOT_FOUND = "game_not_found"
     INTERRUPTED = "interrupted"
     CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class PipelineStage(StrEnum):

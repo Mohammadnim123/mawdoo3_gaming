@@ -74,6 +74,13 @@ class Container:
         )
         if abandoned:
             logger.warning("failed %d job(s) abandoned by a previous process", abandoned)
+        expired = await self.jobs.expire_stale_awaiting(
+            FailureCode.EXPIRED,
+            "the clarifying questions went unanswered — please submit again",
+            max_age_hours=s.pipeline.clarify_answer_ttl_hours,
+        )
+        if expired:
+            logger.info("expired %d job(s) stuck awaiting answers", expired)
 
         # Storage (local mirrors the future bucket layout; s3 is the config swap)
         if s.storage.storage_backend != "local":

@@ -41,7 +41,12 @@ class AnswerQuestionsUseCase:
             for key, value in answers.items()
             if key in known_ids and isinstance(value, str) and value.strip()
         }
-        await self._jobs.set_answers(job.id, cleaned)
+        # CAS: exactly one submitter wins the pause. A double-click, second
+        # tab, or racing cancel loses here and never schedules a resume —
+        # two pipelines for one job would corrupt the event log and publish
+        # two games.
+        if not await self._jobs.set_answers(job.id, cleaned):
+            raise ConflictError("this generation is not waiting for answers")
 
         job = await self._jobs.get(job.id)
         assert job is not None

@@ -140,6 +140,7 @@ class GameVersionResponse(BaseModel):
     id: str
     version_no: int
     parent_id: str | None
+    job_id: str | None
     change_summary: str
     play_url: str
     created_at: datetime
@@ -150,6 +151,7 @@ class GameVersionResponse(BaseModel):
             id=version.id,
             version_no=version.version_no,
             parent_id=version.parent_id,
+            job_id=version.job_id,
             change_summary=version.change_summary,
             play_url=play_url_for_prefix(version.storage_prefix, settings),
             created_at=version.created_at,

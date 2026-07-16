@@ -54,7 +54,13 @@ class JobEventEmitter:
         self._seq = start_seq
 
     async def emit(self, event: str, data: dict | None = None) -> None:
-        self._seq += 1
-        ev = JobEvent(seq=self._seq, event=event, data=data or {})
-        await self._store.append(self._job_id, ev)
+        # Two emitters can race on one job (the running task vs a creator
+        # cancel). Seqs are unique per job in the store, so on a collision
+        # this emitter skips forward until its event lands — nothing is
+        # silently dropped from the replay log.
+        while True:
+            self._seq += 1
+            ev = JobEvent(seq=self._seq, event=event, data=data or {})
+            if await self._store.append(self._job_id, ev):
+                break
         self._bus.publish(self._job_id, ev)

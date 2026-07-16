@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from tests.conftest import boot_client
+from tests.conftest import boot_client, drain_job
 
 from tests.test_clarify_api import _sample_blueprint
 
@@ -40,13 +40,7 @@ def _fake_store_pipeline(monkeypatch, storage_dir):
 
 
 def _drain(client, job_id, tries=100):
-    snap = client.get(f"/api/v1/generations/{job_id}").json()
-    for _ in range(tries):
-        if snap.get("status") in ("succeeded", "failed"):
-            return snap
-        time.sleep(0.05)
-        snap = client.get(f"/api/v1/generations/{job_id}").json()
-    return snap
+    return drain_job(client, job_id, tries=tries)
 
 
 def _create_game(client) -> str:

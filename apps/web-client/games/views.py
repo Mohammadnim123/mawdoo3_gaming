@@ -65,6 +65,25 @@ def _draft_slug() -> str:
     return f"draft-{uuid.uuid4().hex[:12]}"
 
 
+def _json_body(request) -> dict:
+    """Parse a JSON request body, tolerating an empty one. The single parser
+    for every island fetch endpoint — variants must not drift."""
+    if not request.body:
+        return {}
+    try:
+        payload = json.loads(request.body)
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _engine_error_response(exc: GenerationApiError) -> JsonResponse:
+    """Map an engine error onto the island contract: pass through the statuses
+    a client can act on (404/409/422), everything else is a 502 outage."""
+    status = exc.status_code if exc.status_code in (404, 409, 422) else 502
+    return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
+
+
 # ---------------------------------------------------------------------------
 # Landing + feed
 # ---------------------------------------------------------------------------
@@ -76,23 +95,12 @@ def home(request):
     from django.contrib.auth import get_user_model
 
     sort = request.GET.get("sort", "for_you")
-    genre = (request.GET.get("genre") or "").strip() or None
-    base = Game.objects.filter(
-        status=GameStatus.LIVE, visibility=Visibility.PUBLIC
-    ).select_related("owner")
-    if genre:
-        base = base.filter(genre=genre)
-
-    if sort == "following" and request.user.is_authenticated:
-        following_ids = list(request.user.following_set.values_list("following_id", flat=True))
-        qs = base.filter(owner_id__in=following_ids).order_by("-published_at", "-created_at")
-    elif sort == "trending":
-        qs = base.order_by("-play_count", "-like_count", "-published_at")
-    elif sort == "new":
-        qs = base.order_by("-published_at", "-created_at")
-    else:
+    if sort not in ("for_you", "trending", "new", "following"):
         sort = "for_you"
-        qs = base.order_by("-published_at", "-created_at")
+    genre = (request.GET.get("genre") or "").strip() or None
+    # One queryset builder for the server-rendered feed AND /feed.json — the
+    # overlay must open the exact sequence of cards the user is looking at.
+    qs = _feed_queryset(request, sort, genre)
 
     # Right rail: trending now + suggested creators.
     trending = list(
@@ -108,9 +116,11 @@ def home(request):
         creators = creators.exclude(id=request.user.id)
     suggested = list(creators[:4])
 
+    from urllib.parse import urlencode
+
     from django.middleware.csrf import get_token
 
-    feed_query = f"sort={sort}" + (f"&genre={genre}" if genre else "")
+    feed_query = urlencode({"sort": sort, **({"genre": genre} if genre else {})})
     overlay_props = {
         "csrfToken": get_token(request),
         "locale": _locale(request),
@@ -264,7 +274,7 @@ def _start_create(request):
 # ---------------------------------------------------------------------------
 _ISLAND_LABEL_PREFIXES = (
     "ws_", "clarify_", "composer_", "tab_", "player_", "console_", "code_",
-    "version", "overlay_", "action_",
+    "version_", "versions_", "overlay_", "action_",
 )
 
 
@@ -316,14 +326,12 @@ def studio(request, game_id):
             "isLive": game.is_live,
             "slug": game.slug,
         },
-        "job": job_props if (active or (job is not None and job.status == JobStatus.FAILED
-                                        and not game.is_live)) else None,
+        "job": job_props if (active or (job is not None and not game.is_live)) else None,
         "jobUrls": job_urls if active else None,
         "urls": {
             "chat": f"/games/{game.id}/chat",
             "versions": f"/games/{game.id}/versions",
             "rollback": f"/games/{game.id}/rollback",
-            "sourceTemplate": f"/games/{game.id}/versions/VERSION_ID/source",
             "jobBase": "/studio/jobs/",
         },
         "player": (
@@ -336,9 +344,10 @@ def studio(request, game_id):
         "game": game,
         "job": job,
         "active": active,
-        "versions": list(game.versions.order_by("-version_no")),
+        "show_island": active or game.is_live or (
+            job is not None and job.status in (JobStatus.CANCELLED, JobStatus.EXPIRED)
+        ),
         "game_src": _game_src(game, locale) if game.is_live else "",
-        "game_origin": _game_origin(game) if game.is_live else "",
         "island_props": island_props,
     })
 
@@ -386,19 +395,14 @@ def job_answers(request, job_ref_id):
     """Answer a paused job's clarifying questions (island fetch, JSON body
     {"answers": {qid: option_id}}; empty = 'Surprise me')."""
     jr = get_object_or_404(GenerationJobRef, id=job_ref_id, user=request.user)
-    try:
-        body = json.loads(request.body or b"{}")
-    except ValueError:
-        return JsonResponse({"error": "invalid JSON"}, status=400)
-    answers = body.get("answers") or {}
+    answers = _json_body(request).get("answers") or {}
     if not isinstance(answers, dict):
         return JsonResponse({"error": "answers must be an object"}, status=400)
     answers = {str(k)[:64]: str(v)[:300] for k, v in answers.items()}
     try:
         get_client().submit_answers(jr.service_job_id, answers)
     except GenerationApiError as exc:
-        status = exc.status_code if exc.status_code in (404, 409) else 502
-        return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
+        return _engine_error_response(exc)
     jr.status = JobStatus.RUNNING
     jr.questions = []
     jr.save(update_fields=["status", "questions", "updated_at"])
@@ -413,8 +417,7 @@ def job_cancel(request, job_ref_id):
     try:
         get_client().cancel_generation(jr.service_job_id)
     except GenerationApiError as exc:
-        status = exc.status_code if exc.status_code in (404, 409) else 502
-        return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
+        return _engine_error_response(exc)
     jr.status = JobStatus.CANCELLED
     jr.save(update_fields=["status", "updated_at"])
     return JsonResponse({"status": "cancelled"})
@@ -477,24 +480,39 @@ def game_rollback(request, game_id):
     """Make an older version current again — engine pointer flip mirrored
     locally. Accepts form or JSON {"version_id": <local version uuid>}."""
     game = get_object_or_404(Game, id=game_id, owner=request.user)
-    version_id = request.POST.get("version_id")
-    if not version_id and request.body:
-        try:
-            version_id = (json.loads(request.body) or {}).get("version_id")
-        except ValueError:
-            version_id = None
+    version_id = request.POST.get("version_id") or _json_body(request).get("version_id")
     version = get_object_or_404(GameVersion, id=version_id, game=game)
     wants_json = "application/json" in (request.headers.get("Accept") or "")
+
+    def refuse(exc: GenerationApiError):
+        if wants_json:
+            return _engine_error_response(exc)
+        messages.error(request, _t(request)["service_error"])
+        return redirect(f"/studio/{game.id}")
+
+    # A rollback mid-rebuild would race the finishing job's pointer update —
+    # refuse before touching either side (the engine enforces this too).
+    if game.jobs.filter(status__in=_ACTIVE).exists():
+        return refuse(GenerationApiError("this game is being updated", "conflict", 409))
 
     if game.service_game_id and version.service_version_id:
         try:
             get_client().rollback(game.service_game_id, version.service_version_id)
         except GenerationApiError as exc:
-            if exc.code != "conflict" or version.id == game.current_version_id:
-                if wants_json:
-                    return JsonResponse({"error": str(exc), "code": exc.code}, status=409)
-                messages.error(request, _t(request)["service_error"])
-                return redirect(f"/studio/{game.id}")
+            # The engine's 409 is only benign when the target is already its
+            # current version (a re-click / pointer already in sync) — verify
+            # rather than inferring from the shared 'conflict' code.
+            already_current = False
+            if exc.code == "conflict":
+                try:
+                    catalog = get_client().list_versions(game.service_game_id)
+                    already_current = (
+                        catalog.get("current_version_id") == version.service_version_id
+                    )
+                except GenerationApiError:
+                    already_current = False
+            if not already_current:
+                return refuse(exc)
 
     game.current_version = version
     game.save(update_fields=["current_version", "updated_at"])
@@ -569,11 +587,8 @@ def game_chat(request, game_id):
         request.headers.get("Accept") or ""
     ) or request.content_type == "application/json"
     instruction = (request.POST.get("instruction") or "").strip()
-    if not instruction and request.content_type == "application/json" and request.body:
-        try:
-            instruction = str((json.loads(request.body) or {}).get("instruction") or "").strip()
-        except ValueError:
-            instruction = ""
+    if not instruction and request.content_type == "application/json":
+        instruction = str(_json_body(request).get("instruction") or "").strip()
     if not instruction or not game.service_game_id:
         if wants_json:
             return JsonResponse({"error": "instruction required"}, status=400)
@@ -582,8 +597,7 @@ def game_chat(request, game_id):
         job = get_client().start_tweak(game.service_game_id, instruction)
     except GenerationApiError as exc:
         if wants_json:
-            status = exc.status_code if exc.status_code in (404, 409) else 502
-            return JsonResponse({"error": str(exc), "code": exc.code}, status=status)
+            return _engine_error_response(exc)
         messages.error(request, _t(request)["service_error"])
         return redirect(f"/studio/{game.id}")
     job_ref = GenerationJobRef.objects.create(

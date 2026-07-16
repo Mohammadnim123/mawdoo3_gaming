@@ -42,7 +42,6 @@ export interface WorkspaceProps {
     chat: string;
     versions: string;
     rollback: string;
-    sourceTemplate: string; // contains VERSION_ID placeholder
     jobBase: string; // /studio/jobs/ — island appends <refId>/<action>
   };
   player: { src: string; origin: string } | null;
@@ -92,24 +91,66 @@ export function WorkspaceIsland(props: WorkspaceProps) {
   const awaiting =
     !cancelled &&
     jobIsActive &&
-    (stream.phase === "awaiting_input" ||
-      (stream.phase === "connecting" && job?.status === "awaiting_input")) &&
+    (stream.phase === "awaiting_input" || job?.status === "awaiting_input") &&
     questions.length > 0;
 
   // Terminal handling: confirm via the status endpoint (which also finalizes
-  // the product record), then land on the refreshed live workspace.
+  // the product record). Auto-reload into the live workspace only when the
+  // creator isn't mid-thought — a draft in the composer must never be lost.
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const [readyToReveal, setReadyToReveal] = useState(false);
   useEffect(() => {
     if (!jobUrls || finalizedRef.current) return;
     if (stream.phase !== "done" && stream.phase !== "failed") return;
     finalizedRef.current = true;
-    if (stream.phase === "done") {
-      getJson<{ status: string }>(jobUrls.status)
-        .catch(() => undefined)
-        .finally(() => {
-          window.setTimeout(() => window.location.reload(), 900);
-        });
+    if (stream.phase === "failed") {
+      // Unlock the composer; the failure card renders from stream state.
+      setJob((j) => (j ? { ...j, status: "failed" } : j));
+      return;
     }
+    getJson<{ status: string }>(jobUrls.status)
+      .catch(() => undefined)
+      .finally(() => {
+        setJob((j) => (j ? { ...j, status: "succeeded" } : j));
+        setReadyToReveal(true);
+        if (!inputRef.current.trim()) {
+          window.setTimeout(() => window.location.reload(), 900);
+        }
+      });
   }, [stream.phase, jobUrls]);
+
+  // Poll fallback: the SSE stream can die without a terminal event (engine
+  // restart, dropped proxy connection). The status endpoint both reconciles
+  // with the engine server-side and settles the UI here.
+  useEffect(() => {
+    if (!jobIsActive || !jobUrls) return undefined;
+    const interval = window.setInterval(() => {
+      getJson<{ status: string; error: string | null; questions?: ClarifyQuestion[] }>(
+        jobUrls.status,
+      )
+        .then((snap) => {
+          if (snap.status === "failed") {
+            setJob((j) => (j ? { ...j, status: "failed", error: snap.error } : j));
+          } else if (snap.status === "cancelled" || snap.status === "expired") {
+            setJob((j) => (j ? { ...j, status: snap.status } : j));
+          } else if (snap.status === "awaiting_input" && snap.questions?.length) {
+            setJob((j) =>
+              j ? { ...j, status: "awaiting_input", questions: snap.questions ?? [] } : j,
+            );
+          } else if (snap.status === "succeeded" && !finalizedRef.current) {
+            finalizedRef.current = true;
+            setJob((j) => (j ? { ...j, status: "succeeded" } : j));
+            setReadyToReveal(true);
+            if (!inputRef.current.trim()) {
+              window.setTimeout(() => window.location.reload(), 900);
+            }
+          }
+        })
+        .catch(() => undefined);
+    }, 10_000);
+    return () => window.clearInterval(interval);
+  }, [jobIsActive, jobUrls]);
 
   const submitAnswers = useCallback(
     (answers: Record<string, string>) => {
@@ -181,7 +222,9 @@ export function WorkspaceIsland(props: WorkspaceProps) {
     ]);
   }, []);
 
-  const failed = stream.phase === "failed" || job?.status === "failed";
+  const wasCancelled =
+    cancelled || job?.status === "cancelled" || job?.status === "expired";
+  const failed = !wasCancelled && (stream.phase === "failed" || job?.status === "failed");
   const failureMessage = stream.errorMessage || job?.error || t.ws_failed;
   const showTimeline = jobIsActive || stream.steps.length > 0;
 
@@ -194,8 +237,10 @@ export function WorkspaceIsland(props: WorkspaceProps) {
             {job?.prompt || props.game.prompt}
           </div>
 
-          {cancelled ? (
-            <p className="text-sm text-[var(--color-ink-muted)]">{t.ws_cancelled}</p>
+          {wasCancelled ? (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              {job?.status === "expired" ? t.ws_expired : t.ws_cancelled}
+            </p>
           ) : failed ? (
             <div className="rounded-xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-sm text-[var(--color-ink)]">
               <p>{failureMessage}</p>
@@ -229,9 +274,20 @@ export function WorkspaceIsland(props: WorkspaceProps) {
           )}
 
           {stream.phase === "done" && (
-            <p className="text-sm text-[var(--color-success)]">
-              {t.ws_done} {stream.doneTitle ? `— ${stream.doneTitle}` : ""}
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-[var(--color-success)]">
+                {t.ws_done} {stream.doneTitle ? `— ${stream.doneTitle}` : ""}
+              </p>
+              {readyToReveal && (
+                <button
+                  type="button"
+                  className="fp-btn fp-btn-cta fp-btn-sm"
+                  onClick={() => window.location.reload()}
+                >
+                  {t.ws_play_it}
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -352,9 +408,7 @@ export function WorkspaceIsland(props: WorkspaceProps) {
             >
               <CodeView
                 sourceUrl={
-                  codeVersionId
-                    ? props.urls.sourceTemplate.replace("VERSION_ID", codeVersionId)
-                    : null
+                  codeVersionId ? `${props.urls.versions}/${codeVersionId}/source` : null
                 }
                 labels={{
                   loading: t.code_loading,

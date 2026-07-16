@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import time
 
-from tests.conftest import boot_client
+from tests.conftest import boot_client, build_sample_blueprint, drain_job
 
 from generation_service.domain.entities import ClarifyOption, ClarifyQuestion
 
@@ -51,47 +51,11 @@ def _fake_clarify_pipeline(monkeypatch, seen: dict):
 
 
 def _sample_blueprint():
-    from tests.conftest import TEMPLATE_DIR  # noqa: F401 — keep import surface identical
-
-    from generation_service.domain.blueprint import (
-        Control,
-        GameBlueprint,
-        Genre,
-        LocalizedText,
-        TweakParameter,
-        UiString,
-    )
-
-    return GameBlueprint(
-        title=LocalizedText(en="Jungle Run", ar="عدّاء الأدغال"),
-        genre=Genre.ARCADE,
-        summary="Run through the jungle collecting fruit.",
-        core_rule="Collect fruit; hitting a rock ends the run.",
-        win_condition="Collect 20 fruit",
-        lose_condition="Hit a rock",
-        rules=["Fruit adds one point", "Rocks end the game", "Speed rises over time"],
-        controls=[Control(input="touch", action="tap to jump")],
-        difficulty="speed ramps",
-        rendering="canvas",
-        default_locale="en",
-        visual_style="lowpoly-nature look, palette bg #A5D8CE etc.",
-        entities=["runner", "fruit", "rock"],
-        tweaks=[TweakParameter(name="speed", description="run speed", value=4)],
-        ui_strings=[
-            UiString(key="title", en="Jungle Run", ar="عدّاء الأدغال"),
-            UiString(key="game_over", en="Game over", ar="انتهت اللعبة"),
-        ],
-    )
+    return build_sample_blueprint()
 
 
 def _drain(client, job_id, statuses, tries=100):
-    snap = client.get(f"/api/v1/generations/{job_id}").json()
-    for _ in range(tries):
-        if snap.get("status") in statuses:
-            return snap
-        time.sleep(0.05)
-        snap = client.get(f"/api/v1/generations/{job_id}").json()
-    return snap
+    return drain_job(client, job_id, statuses=statuses, tries=tries)
 
 
 def test_pause_answers_resume_lifecycle(tmp_path, monkeypatch):

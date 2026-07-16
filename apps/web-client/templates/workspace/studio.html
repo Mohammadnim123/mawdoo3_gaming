@@ -23,13 +23,11 @@
   {% endif %}
 </div>
 
-{% if active or game.is_live %}
+{% if show_island %}
   {# React workspace island: live SSE generation, clarify cards, chat edit, #}
   {# Code view, version tree. Props are server-rendered; session cookie auth. #}
   {{ island_props|json_script:"workspace-props" }}
-  <div id="workspace-island"
-       data-live-src="{{ game_src }}"
-       class="min-h-[60vh]">
+  <div id="workspace-island" class="min-h-[60vh]">
     <div class="fp-card flex min-h-[40vh] items-center justify-center p-6 text-sm text-ink-muted">
       <span class="fp-shimmer">{{ t.loading }}</span>
     </div>
@@ -60,7 +58,7 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
-{% if active or game.is_live %}
+{% if show_island %}
   <script type="module" src="{% static 'games/dist/islands/workspace.js' %}"></script>
 {% endif %}
 {% endblock %}

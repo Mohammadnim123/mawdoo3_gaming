@@ -117,16 +117,23 @@ class GenerationApiClient:
         headers = self.auth_headers()
         if last_event_id:
             headers["Last-Event-ID"] = last_event_id
-        with self._session.get(
-            self.stream_url(job_id), headers=headers, stream=True, timeout=(10, 3600)
-        ) as response:
-            if response.status_code >= 400:
-                raise GenerationApiError(
-                    f"stream error {response.status_code}", status_code=response.status_code
-                )
-            for chunk in response.iter_content(chunk_size=None):
-                if chunk:
-                    yield chunk
+        try:
+            with self._session.get(
+                self.stream_url(job_id), headers=headers, stream=True, timeout=(10, 3600)
+            ) as response:
+                if response.status_code >= 400:
+                    raise GenerationApiError(
+                        f"stream error {response.status_code}",
+                        status_code=response.status_code,
+                    )
+                for chunk in response.iter_content(chunk_size=None):
+                    if chunk:
+                        yield chunk
+        except requests.RequestException as exc:
+            # An engine drop mid-stream must surface as our error type so the
+            # SSE proxy can emit a terminal 'failed' frame instead of crashing
+            # the streaming response (the browser would silently retry forever).
+            raise GenerationApiUnavailable(str(exc)) from exc
 
     # -- plumbing -------------------------------------------------------------
 
