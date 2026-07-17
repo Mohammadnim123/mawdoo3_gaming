@@ -12,9 +12,11 @@
   {% if game.cover_url %}<meta name="twitter:image" content="{{ game.cover_url }}">{% endif %}
   {# Reference noindex rule: only version-less drafts (unlisted games ARE indexed). #}
   {% if not game.is_live %}<meta name="robots" content="noindex, nofollow">{% endif %}
-  {# E34 — the real VideoGame entity with live engagement counters (mirrors
-     the reference videoGameSchema; escapejs keeps user strings JSON-safe;
-     description is OMITTED when the creator wrote none — never the prompt). #}
+  {% comment %}
+  E34 — the real VideoGame entity with live engagement counters (mirrors
+  the reference videoGameSchema; escapejs keeps user strings JSON-safe;
+  description is OMITTED when the creator wrote none — never the prompt).
+  {% endcomment %}
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"VideoGame",
    "name":"{{ game|loc_title:locale|escapejs }}",
@@ -46,8 +48,10 @@
 {% endblock %}
 {% block main_class %}w-full{% endblock %}
 {% block content %}
-{# The island fetches the game contract by slug and renders the ported
-   GameScreen; until then the server ships the same pending layout. #}
+{% comment %}
+The island fetches the game contract by slug and renders the ported
+GameScreen; until then the server ships the same pending layout.
+{% endcomment %}
 <div id="game-island">
   <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-3 sm:gap-5 sm:py-6 md:py-10">
     <div class="fp-pulse aspect-[16/10] max-h-[70dvh] w-full rounded-2xl bg-surface-2" aria-hidden="true"></div>

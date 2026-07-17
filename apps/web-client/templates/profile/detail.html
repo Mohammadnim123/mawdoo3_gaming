@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% load static %}
-{# /u/{handle} — the profile island (reference app/u/[handle]/page.tsx). The
-   handle is the only server prop; the screen self-fetches the profile, games
-   and (on your own handle) the liked/saved/history library tabs. Known
-   handles are public + indexable with seo.profile metadata; unknown/banned
-   handles still render (the screen shows its own EmptyState) but go noindex
-   with the bare-@handle title — reference parity. #}
+{% comment %}
+/u/{handle} — the profile island (reference app/u/[handle]/page.tsx). The
+handle is the only server prop; the screen self-fetches the profile, games
+and (on your own handle) the liked/saved/history library tabs. Known
+handles are public + indexable with seo.profile metadata; unknown/banned
+handles still render (the screen shows its own EmptyState) but go noindex
+with the bare-@handle title — reference parity.
+{% endcomment %}
 {% block title %}{% if profile_user %}{% if profile_user.display_name %}{{ profile_user.display_name }}{% else %}@{{ profile_user.handle }}{% endif %}{% else %}@{{ handle }}{% endif %} · {{ site_name }}{% endblock %}
 {% block description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
 {% block og_title %}{% if profile_user %}{{ profile_user.display_name|default:profile_user.handle }}{% else %}{{ t.meta_default_title }}{% endif %}{% endblock %}

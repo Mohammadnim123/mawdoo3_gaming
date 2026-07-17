@@ -37,9 +37,11 @@
   </div>
 </section>
 
-{# ── Feed island — the server ships the reference's PENDING layout twin  ──
-   (left rail, composer, sort + genre chips, 3 skeleton cards) plus an
-   sr-only crawlable list; the island replaces it all on mount. #}
+{% comment %}
+── Feed island — the server ships the reference's PENDING layout twin ──
+(left rail, composer, sort + genre chips, 3 skeleton cards) plus an
+sr-only crawlable list; the island replaces it all on mount.
+{% endcomment %}
 <div id="feed-island">
   <div class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-4 sm:py-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,600px)_300px] xl:justify-center">
     <div class="hidden lg:block">

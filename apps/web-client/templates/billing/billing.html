@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% load static %}
-{# /account/billing — the billing island (reference app/account/billing/page.tsx).
-   BillingScreen reads ?checkout=success client-side (toast + cache refresh +
-   query strip); the view keeps its @login_required gate. Reference tab title:
-   t.meta.billing ("Billing & plan"). Private surface → noindex. #}
+{% comment %}
+/account/billing — the billing island (reference app/account/billing/page.tsx).
+BillingScreen reads ?checkout=success client-side (toast + cache refresh +
+query strip); the view keeps its @login_required gate. Reference tab title:
+t.meta.billing ("Billing & plan"). Private surface → noindex.
+{% endcomment %}
 {% block title %}{{ t.billing_title }} · {{ site_name }}{% endblock %}
 {% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block main_class %}w-full{% endblock %}

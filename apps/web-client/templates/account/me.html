@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% load static %}
-{# /me — the account island (reference app/me/page.tsx). AccountScreen reads
-   ?tab= client-side; the view keeps its @login_required gate. Reference tab
-   title: t.meta.myAccount ("My account") — served from the legacy catalog's
-   closest key. Private surface → noindex (reference metadata). #}
+{% comment %}
+/me — the account island (reference app/me/page.tsx). AccountScreen reads
+?tab= client-side; the view keeps its @login_required gate. Reference tab
+title: t.meta.myAccount ("My account") — served from the legacy catalog's
+closest key. Private surface → noindex (reference metadata).
+{% endcomment %}
 {% block title %}{{ t.acct_title }} · {{ site_name }}{% endblock %}
 {% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block main_class %}w-full{% endblock %}

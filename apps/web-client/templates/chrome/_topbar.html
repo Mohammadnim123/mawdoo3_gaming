@@ -73,9 +73,11 @@
           </div>
         {% else %}
           <span class="flex items-center gap-1.5">
-            {# LanguageToggle pill (SSR: ?lang= round-trip preserving the query
-               — a lang param already present is overridden, last one wins;
-               React swaps in place). #}
+            {% comment %}
+            LanguageToggle pill (SSR: ?lang= round-trip preserving the query
+            — a lang param already present is overridden, last one wins;
+            React swaps in place).
+            {% endcomment %}
             <a href="?{% if request.GET %}{{ request.GET.urlencode }}&{% endif %}lang={{ other_locale }}" aria-label="{{ t.nav_language }}" data-testid="language-toggle"
                class="fp-hit flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm text-ink-secondary transition-colors duration-150 ease-out hover:bg-surface-1 hover:text-ink">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
