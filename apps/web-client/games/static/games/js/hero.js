@@ -41,23 +41,24 @@
     ];
   }
 
-  /* Reference-exact behavior (useTypewriter.ts): the hook joins the phrase
-   * list on spaces and re-splits it inside the effect — so the SHIPPED
-   * reference types the examples WORD-BY-WORD, and reduced-motion settles on
-   * the first word. Bug-compatible on purpose ("match Codply exactly"). */
-  var words = examples.join(" ").split(" ").filter(Boolean);
+  /* Type each full example idea — type it → hold → delete → rest → next,
+   * matching what the reference Typewriter class was designed to do. (The
+   * reference's useTypewriter hook accidentally join(" ")/split(" ")s the
+   * phrases into single words; we type the whole sentences instead.)
+   * Reduced-motion settles on the first full phrase, static. */
+  var phraseStrings = examples.filter(Boolean);
 
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce) { ta.setAttribute("placeholder", words[0] || ""); return; }
+  if (reduce) { ta.setAttribute("placeholder", phraseStrings[0] || ""); return; }
 
   /* Reference Typewriter timings: type 45 / delete 22 / hold 2200 / rest 450.
    * Steps by code POINT (Array.from) so Arabic and emoji never tear; never
    * pauses — while the user types, the value covers the placeholder anyway. */
   var TYPE = 45, DELETE = 22, HOLD = 2200, REST = 450;
-  var phrases = words.map(function (p) { return Array.from(p); });
+  var phrases = phraseStrings.map(function (p) { return Array.from(p); });
   var i = 0, pos = 0, deleting = false;
   function tick() {
-    var word = phrases[i];
+    var phrase = phrases[i];
     var delay;
     if (deleting) {
       pos -= 1;
@@ -66,9 +67,9 @@
     } else {
       pos += 1;
       delay = TYPE;
-      if (pos >= word.length) { pos = word.length; deleting = true; delay = HOLD; }
+      if (pos >= phrase.length) { pos = phrase.length; deleting = true; delay = HOLD; }
     }
-    ta.setAttribute("placeholder", (deleting ? word : phrases[i]).slice(0, pos).join(""));
+    ta.setAttribute("placeholder", (deleting ? phrase : phrases[i]).slice(0, pos).join(""));
     setTimeout(tick, delay);
   }
   tick();
