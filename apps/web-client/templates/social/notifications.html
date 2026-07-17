@@ -1,13 +1,5 @@
 {% extends "base.html" %}
 {% load static %}
-{# /notifications — the inbox island (reference app/notifications/page.tsx).
-   The screen marks-read via POST /api/v1/me/notifications/read on mount
-   (reference behavior); the view keeps its @login_required gate.
-   Private surface → noindex (reference metadata).
-   NOTE: social/views.py:106 also auto-marks read while rendering THIS page,
-   before the island fetches — so rows arrive already read and the unread
-   highlight never shows. Island behavior is reference-correct; a later pass
-   removes the server-side mark. #}
 {% block title %}{{ t.nav_notifications }} · {{ site_name }}{% endblock %}
 {% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block main_class %}w-full{% endblock %}

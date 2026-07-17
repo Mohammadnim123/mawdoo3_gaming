@@ -101,12 +101,20 @@ def chrome(request):
     else:
         bell_aria = t["nav_notifications"]
 
+    # Canonical origin: env-pinned in prod (reference siteOrigin()); the
+    # request host is only a dev fallback so staging/proxies don't leak into
+    # canonical/OG/JSON-LD identity.
+    site_origin = getattr(settings, "SITE_ORIGIN", "") or (
+        f"{request.scheme}://{request.get_host()}" if hasattr(request, "get_host") else ""
+    )
+
     return {
         "locale": locale,
         "dir": text_dir,
         "t": t,
         "other_locale": "en" if locale == "ar" else "ar",
         "site_name": settings.SITE_NAME,
+        "site_origin": site_origin,
         "games_cdn_base_url": settings.GAMES_CDN_BASE_URL,
         "nav_unread": unread,
         "nav_unread_badge": "99+" if unread > 99 else str(unread),

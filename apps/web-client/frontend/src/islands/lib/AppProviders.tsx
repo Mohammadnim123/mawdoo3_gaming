@@ -1,7 +1,7 @@
 // App-wide providers for Django-mounted islands — the islands-build port of
 // the reference `app/providers.tsx` (same query-client options, same nesting).
 // The locale comes from `<html lang>` (Django renders it), not a prop.
-import { useState, type ReactElement, type ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@codply/contracts";
 import { ToastProvider } from "@codply/ui";
@@ -37,8 +37,14 @@ function LocalizedToastProvider({ children }: { children: ReactNode }): ReactEle
   );
 }
 
+// ONE cache for the whole page: a Django page can mount several islands
+// (page body + chrome). The reference app has a single QueryClient — separate
+// caches would leave stale hearts/counts when the overlay mutates a game the
+// page island also renders. Module-level = shared via the common chunk.
+const sharedQueryClient = makeQueryClient();
+
 export function AppProviders({ children }: { children: ReactNode }): ReactElement {
-  const [queryClient] = useState(makeQueryClient);
+  const queryClient = sharedQueryClient;
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>

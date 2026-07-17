@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}{{ t.nav_create }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block main_class %}w-full{% endblock %}
 {% block content %}
 {# The create island renders the whole flow (hero title, composer, brief,   #}

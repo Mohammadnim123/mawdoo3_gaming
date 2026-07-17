@@ -80,9 +80,11 @@ def avatar(request):
         raise ApiError(VALIDATION_ERROR, "That image could not be read.") from None
     if len(blob) > _AVATAR_MAX_BYTES:
         raise ApiError(VALIDATION_ERROR, "That image is too big — 2 MB max.")
-    try:
-        from PIL import Image
+    # A missing imaging library is a deployment fault, not a user error —
+    # never mask it as a 422.
+    from PIL import Image
 
+    try:
         img = Image.open(io.BytesIO(blob))
         if (img.format or "").upper() not in _AVATAR_FORMATS:
             raise ApiError(VALIDATION_ERROR, "Use a PNG, JPEG or WebP image.")
@@ -121,12 +123,16 @@ def my_games(request):
 
 @api_view("GET", auth=True)
 def my_game_detail(request, game_id):
-    from django.shortcuts import get_object_or_404
+    from .http import NOT_FOUND
 
-    game = get_object_or_404(
-        Game.objects.select_related("owner", "current_version", "remixed_from"),
-        id=game_id, owner=request.user,
+    game = (
+        Game.objects.select_related("owner", "current_version", "remixed_from")
+        .exclude(status=GameStatus.REMOVED)
+        .filter(id=game_id, owner=request.user)
+        .first()
     )
+    if game is None:
+        raise ApiError(NOT_FOUND, "No such game.")
     viewer = _viewer_state(request, [game.id])
     return JsonResponse(game_detail(game, _locale(request), viewer=viewer.get(game.id)))
 
@@ -303,6 +309,10 @@ def claim_daily(request):
     from billing.models import CreditLedger
     from billing.services import grant_daily
 
+    plan = _subscription(request.user).plan
+    if "daily_claim" not in PLAN_CATALOG.get(plan, PLAN_CATALOG["free"])["features"]:
+        raise ApiError(VALIDATION_ERROR, "Your plan doesn't include a daily claim.",
+                       status=400)
     today = timezone.now().date().isoformat()
     already = CreditLedger.objects.filter(
         user=request.user, kind=CreditLedger.Kind.GRANT_DAILY,

@@ -71,8 +71,12 @@ function ChromeActions({ me, unread }: ChromeProps): ReactElement {
  */
 function ChromeOverlayHost(): ReactElement | null {
   const pathname = usePathname();
-  // The pathname the viewer was on when the overlay opened; null = closed.
-  const [returnPath, setReturnPath] = useState<string | null>(null);
+  // The path this PAGE was served on. Any soft-navigation to a /g/ URL
+  // (intercepted click, SearchMenu's router.push, back/forward re-entering
+  // an overlay history entry) renders the overlay; landing back on the
+  // served path (or any non-/g/ path) closes it. A full load OF a /g/ page
+  // never opens the overlay — the server rendered the real game page.
+  const [initialPath] = useState(() => window.location.pathname);
 
   useEffect(() => {
     const onClick = (event: MouseEvent): void => {
@@ -88,34 +92,13 @@ function ChromeOverlayHost(): ReactElement | null {
       event.preventDefault();
       // Already on this game's page/overlay — a no-op, like the reference.
       if (overlaySlug(window.location.pathname) === slug) return;
-      const from = window.location.pathname;
       window.history.pushState(window.history.state, "", url.pathname + url.search);
-      setReturnPath((current) => current ?? from);
     };
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
   }, []);
 
-  const slug = returnPath !== null ? overlaySlug(pathname) : null;
-
-  // Back (or PlayerOverlay's close) popped to the origin page → unmount.
-  useEffect(() => {
-    if (returnPath !== null && (pathname === returnPath || overlaySlug(pathname) === null)) {
-      setReturnPath(null);
-    }
-  }, [pathname, returnPath]);
-
-  // Forward-navigation to a /g/ entry while closed: this page can't render
-  // that game in place (no overlay context) — load the real game page.
-  useEffect(() => {
-    const onPopState = (): void => {
-      if (returnPath === null && overlaySlug(window.location.pathname) !== null) {
-        window.location.reload();
-      }
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [returnPath]);
+  const slug = pathname === initialPath ? null : overlaySlug(pathname);
 
   // Direct-open context: when the browsing feed didn't populate feedNav,
   // seed a single-item context from the game itself (prev/next stay empty).

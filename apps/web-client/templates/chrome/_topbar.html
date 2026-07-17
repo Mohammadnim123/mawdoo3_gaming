@@ -26,13 +26,15 @@
                 </span>
                 <input type="text" name="q" aria-label="{{ t.search_placeholder }}" placeholder="{{ t.search_placeholder }}"
                        autocomplete="off" enterkeyhint="search" spellcheck="false"
+                       role="combobox" aria-expanded="false" aria-controls="header-search-menu"
+                       aria-autocomplete="list" data-testid="header-search-input"
                        class="h-11 w-full rounded-2xl border bg-surface-2 px-3 text-base text-ink placeholder:text-ink-muted transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-50 ps-10 border-edge hover:border-edge-strong">
               </div>
             </div>
           </div>
         </form>
         {# <sm: the compact icon (React opens the search sheet; SSR links to /search). #}
-        <a href="/search" aria-label="{{ t.nav_search }}"
+        <a href="/search" aria-label="{{ t.nav_search }}" data-testid="header-search-trigger"
            class="fp-hit inline-flex items-center justify-center transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-50 border border-transparent bg-transparent text-ink-secondary hover:bg-surface-2 hover:text-ink size-10 rounded-2xl sm:hidden">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
         </a>
@@ -71,8 +73,10 @@
           </div>
         {% else %}
           <span class="flex items-center gap-1.5">
-            {# LanguageToggle pill (SSR: ?lang= round-trip; React swaps in place). #}
-            <a href="?lang={{ other_locale }}" aria-label="{{ t.nav_language }}" data-testid="language-toggle"
+            {# LanguageToggle pill (SSR: ?lang= round-trip preserving the query
+               — a lang param already present is overridden, last one wins;
+               React swaps in place). #}
+            <a href="?{% if request.GET %}{{ request.GET.urlencode }}&{% endif %}lang={{ other_locale }}" aria-label="{{ t.nav_language }}" data-testid="language-toggle"
                class="fp-hit flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm text-ink-secondary transition-colors duration-150 ease-out hover:bg-surface-1 hover:text-ink">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
               {{ t.other_lang }}

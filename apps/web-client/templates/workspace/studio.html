@@ -1,6 +1,6 @@
 {% extends "base_bare.html" %}
 {% load game_extras static %}
-{% block title %}{% if game %}{{ game|loc_title:locale }} · {% endif %}{{ t.nav_create }} · {{ site_name }}{% endblock %}
+{% block title %}{{ t.meta_studio }} · {{ site_name }}{% endblock %}
 {% block content %}
 {# The studio workspace island owns the WHOLE viewport (its own top bar,     #}
 {# chat pane, game/library/code views — reference WorkspaceShell). The main  #}

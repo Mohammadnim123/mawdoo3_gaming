@@ -14,19 +14,11 @@ from . import services
 from .models import CreditLedger, Subscription
 
 
-@login_required(login_url="/login")
 def billing(request):
-    sub = Subscription.objects.filter(user=request.user).first()
-    ledger = list(request.user.credit_ledger.all()[:50])
-    used_today = services.generations_today(request.user)
-    return render(request, "billing/billing.html", {
-        "sub": sub,
-        "ledger": ledger,
-        "balance_cents": request.user.credits_balance_cents,
-        "used_today": used_today,
-        "quota": request.user.daily_gen_quota,
-        "checkout_success": request.GET.get("checkout") == "success",
-    })
+    # Anonymous visitors get the screen's own logged-out state (reference
+    # parity: /account/* is outside the auth-gate matcher; BillingScreen
+    # renders an EmptyState + login link). The island self-fetches everything.
+    return render(request, "billing/billing.html", {})
 
 
 @require_POST
@@ -81,9 +73,12 @@ def dashboard(request):
     })
 
 
-@login_required(login_url="/login")
 def settings_view(request):
+    """Device-level prefs (theme/language) — works logged-out, like the
+    reference. The legacy profile-edit POST stays for form fallbacks only."""
     if request.method == "POST":
+        if not request.user.is_authenticated:
+            return redirect("/login?next=/account/settings")
         u = request.user
         u.display_name = (request.POST.get("display_name") or u.display_name).strip()[:80]
         u.bio = (request.POST.get("bio") or "").strip()[:200]

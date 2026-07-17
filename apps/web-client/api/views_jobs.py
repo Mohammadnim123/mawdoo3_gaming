@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 
 from django.http import JsonResponse, StreamingHttpResponse
@@ -20,7 +21,7 @@ from .http import (
     json_body,
     no_content,
 )
-from .serializers import job_payload
+from .serializers import job_payload, play_src
 from .views_me import _locale
 
 _ACTIVE = {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.AWAITING_INPUT}
@@ -38,11 +39,19 @@ def _ref(request, job_id) -> GenerationJobRef:
 @api_view("POST", auth=True)
 def generate(request):
     from billing.services import can_generate
-    from games.constants import PROMPT_MAX_CHARS, PROMPT_MIN_CHARS
+    from django.core.cache import cache
     from games.services.prompt_validation import (
         PromptValidationUnavailable,
         validate_prompt,
     )
+
+    # Contract idempotency: a network retry with the same key must not spend
+    # a second generation or create a duplicate draft.
+    idem_key = (request.headers.get("Idempotency-Key") or "")[:128]
+    if idem_key:
+        cached = cache.get(f"genidem:{request.user.id}:{idem_key}")
+        if cached:
+            return JsonResponse(cached, status=202)
 
     if not can_generate(request.user):
         raise ApiError(QUOTA_EXCEEDED, "You've hit today's generation limit.")
@@ -50,9 +59,9 @@ def generate(request):
     prompt = str(body.get("prompt") or "").strip()
     options = body.get("options") or {}
     skip_questions = bool(options.get("skip_questions")) if isinstance(options, dict) else False
-    if not (PROMPT_MIN_CHARS <= len(prompt) <= PROMPT_MAX_CHARS):
-        raise ApiError(VALIDATION_ERROR,
-                       f"Prompts need {PROMPT_MIN_CHARS}–{PROMPT_MAX_CHARS} characters.")
+    # Contract bounds (3..1000) — fail fast before the moderation LLM.
+    if not (3 <= len(prompt) <= 1000):
+        raise ApiError(VALIDATION_ERROR, "Prompts need 3–1000 characters.")
     try:
         verdict = validate_prompt(prompt)
         if not verdict.valid:
@@ -76,19 +85,30 @@ def generate(request):
         type=JobType.CREATE, prompt=prompt, status=JobStatus.QUEUED,
         stage=job.get("stage", ""),
     )
-    return JsonResponse({"job_id": str(ref.id), "game_id": str(game.id)}, status=202)
+    payload = {"job_id": str(ref.id), "game_id": str(game.id)}
+    if idem_key:
+        cache.set(f"genidem:{request.user.id}:{idem_key}", payload, 60 * 60 * 24)
+    return JsonResponse(payload, status=202)
 
 
 _STEP_STATUS = {"pending", "running", "done", "failed", "completed"}
 _TRANSCRIPT_EVENTS = {"activity", "message", "file", "heal"}
 
 
-def _fold_events(events: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Fold the engine event log into contract steps[] + transcript[]."""
+def _fold_events(events: list[dict], *, terminal: bool = False,
+                 failed: bool = False) -> tuple[list[dict], list[dict]]:
+    """Fold the engine event log into contract steps[] + transcript[].
+
+    The engine's log may carry only `running` transitions (older jobs predate
+    completion frames), so a NEW step starting closes the previous one, and a
+    terminal job settles whatever is still running (`done`, or `failed` for
+    the last step of a failed job) — mirroring the reference reducer.
+    """
     steps: list[dict] = []
     by_key: dict[str, dict] = {}
     transcript: list[dict] = []
     activity_index: dict[str, int] = {}
+    last_running: dict | None = None
     for row in events:
         name = row.get("event")
         data = row.get("data") or {}
@@ -97,6 +117,10 @@ def _fold_events(events: list[dict]) -> tuple[list[dict], list[dict]]:
             status = str(data.get("status") or "running")
             if status not in _STEP_STATUS:
                 status = "running"
+            if status == "running" and last_running is not None \
+                    and last_running.get("step") != key \
+                    and last_running.get("status") == "running":
+                last_running["status"] = "completed"
             if key in by_key:
                 by_key[key]["status"] = status
                 by_key[key]["label"] = data.get("label") or by_key[key]["label"]
@@ -105,6 +129,8 @@ def _fold_events(events: list[dict]) -> tuple[list[dict], list[dict]]:
                          "started_at": None, "ended_at": None}
                 by_key[key] = entry
                 steps.append(entry)
+            if status == "running":
+                last_running = by_key[key]
         elif name in _TRANSCRIPT_EVENTS:
             if name == "activity" and data.get("id"):
                 # Activity upserts collapse to final state at first-seen position.
@@ -114,6 +140,13 @@ def _fold_events(events: list[dict]) -> tuple[list[dict], list[dict]]:
                     continue
                 activity_index[key] = len(transcript)
             transcript.append({"event": name, "data": data})
+    if terminal:
+        running = [s for s in steps if s["status"] == "running"]
+        for i, entry in enumerate(running):
+            if failed and i == len(running) - 1:
+                entry["status"] = "failed"
+            else:
+                entry["status"] = "completed"
     return steps, transcript
 
 
@@ -130,23 +163,111 @@ def snapshot(request, job_id):
     if hasattr(client, "get_events"):
         try:
             payload = client.get_events(ref.service_job_id)
-            steps, transcript = _fold_events(payload.get("items") or [])
+            steps, transcript = _fold_events(
+                payload.get("items") or [],
+                terminal=ref.status not in _ACTIVE,
+                failed=ref.status == JobStatus.FAILED,
+            )
         except GenerationApiError:
             pass
     return JsonResponse(job_payload(ref, _locale(request), steps=steps, transcript=transcript))
+
+
+def _rewrite_frame(ref: GenerationJobRef, locale: str, frame: bytes) -> bytes:
+    """Translate engine SSE frames into the contract the islands parse.
+
+    The engine speaks its own dialect for a few payloads; the vendored zod
+    schemas silently DROP non-conforming frames, so `done`/`failed` must be
+    rewritten or the workspace never sees a job finish live:
+      - done: engine {game_id: <engine id>, title_en/_ar, version_*} →
+        contract {game_id: <django uuid>, version_id, play_url, cover_url?,
+        title}. Finalizing via sync_job here also mirrors the version row at
+        the exact moment the engine publishes it.
+      - failed: contract requires `refunded`; cancelled shows as failed with
+        the stop message (reference cancel semantics).
+      - questions: engine `default_option_id` → contract `default`.
+    Everything else passes through untouched (ids/seq preserved).
+    """
+    lines = frame.split(b"\n")
+    event = ""
+    data_lines = []
+    other_lines = []
+    for line in lines:
+        if line.startswith(b"event:"):
+            event = line[6:].strip().decode("utf-8", "replace")
+            other_lines.append(line)
+        elif line.startswith(b"data:"):
+            data_lines.append(line[5:].strip())
+        else:
+            other_lines.append(line)
+    if event not in ("done", "failed", "questions"):
+        return frame + b"\n\n"
+    try:
+        data = json.loads(b"\n".join(data_lines) or b"{}")
+    except ValueError:
+        return frame + b"\n\n"
+
+    if event == "questions":
+        for q in data.get("questions") or []:
+            if isinstance(q, dict) and "default" not in q and q.get("default_option_id"):
+                q["default"] = q["default_option_id"]
+    else:
+        sync_job(ref)
+        ref.refresh_from_db()
+        game = ref.game
+        if event == "done":
+            if game is not None:
+                game.refresh_from_db()
+            version = game.current_version if (game and game.current_version_id) else None
+            data = {
+                "game_id": str(game.id) if game else None,
+                "version_id": str(version.id) if version else None,
+                "play_url": play_src(game.play_url, locale) if (game and game.is_live) else "",
+                "title": game.title(locale) if game else "",
+                **({"cover_url": game.cover_url} if (game and game.cover_url) else {}),
+            }
+        else:  # failed
+            message = data.get("error_user_msg") or ref.error_message or "Generation failed."
+            if ref.status == JobStatus.CANCELLED:
+                message = data.get("error_user_msg") or "Cancelled."
+            data = {
+                "error_code": data.get("error_code") or ref.error_code or "server_error",
+                "error_user_msg": message,
+                "refunded": bool(data.get("refunded", False)),
+            }
+    payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    return b"\n".join(other_lines) + b"\ndata: " + payload + b"\n\n"
+
+
+def _frame_stream(ref: GenerationJobRef, locale: str, chunks) :
+    """Incremental SSE framer: buffer engine bytes, yield rewritten frames."""
+    buffer = b""
+    for chunk in chunks:
+        buffer += chunk
+        while b"\n\n" in buffer:
+            frame, buffer = buffer.split(b"\n\n", 1)
+            frame = frame.strip(b"\r\n")
+            if not frame:
+                continue
+            yield _rewrite_frame(ref, locale, frame)
+    if buffer.strip():
+        yield _rewrite_frame(ref, locale, buffer.strip(b"\r\n"))
 
 
 @api_view("GET", auth=True)
 def stream(request, job_id):
     ref = _ref(request, job_id)
     last = request.headers.get("Last-Event-ID")
+    locale = _locale(request)
 
     def gen():
         try:
-            yield from get_client().iter_stream(ref.service_job_id, last)
+            upstream = get_client().iter_stream(ref.service_job_id, last)
+            yield from _frame_stream(ref, locale, upstream)
         except GenerationApiError as exc:
             if exc.status_code == 404:
-                yield b'event: failed\ndata: {"error_user_msg": "stream unavailable"}\n\n'
+                yield (b'event: failed\ndata: {"error_code": "not_found", '
+                       b'"error_user_msg": "stream unavailable", "refunded": false}\n\n')
 
     resp = StreamingHttpResponse(gen(), content_type="text/event-stream")
     resp["Cache-Control"] = "no-cache"

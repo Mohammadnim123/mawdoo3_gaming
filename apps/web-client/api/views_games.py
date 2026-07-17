@@ -36,7 +36,6 @@ from .http import (
 from .serializers import (
     feed_item,
     game_detail,
-    game_payload,
     play_src,
     version_payload,
 )
@@ -207,7 +206,9 @@ def patch_or_delete_game(request, handle):
     if fields:
         game.save(update_fields=list(set(fields)) + ["updated_at"])
     viewer = _viewer_state(request, [game.id])
-    return JsonResponse(game_payload(game, _locale(request), viewer=viewer.get(game.id)))
+    # The client parses PATCH responses with GameDetailSchema (current_version
+    # is required-nullable); returning the slim Game shape breaks every edit.
+    return JsonResponse(game_detail(game, _locale(request), viewer=viewer.get(game.id)))
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +265,16 @@ def _engine_version(game: Game, version: GameVersion):
     return game.service_game_id, version.service_version_id
 
 
+# B44: which bundle text file each ?path= maps to in the engine's source
+# payload. Omitted path = the game's editable entry (game.js on our engine —
+# index.html is template-owned, unlike the reference).
+_SOURCE_PATHS = {
+    "game.js": "game_js",
+    "game.css": "game_css",
+    "index.html": "source_html",
+}
+
+
 @api_view("GET", auth=True)
 def version_source(request, handle, version_id):
     game = _owned_game(request, handle)
@@ -272,7 +283,15 @@ def version_source(request, handle, version_id):
         raise ApiError(NOT_FOUND, "No such version.")
     svc_game, svc_version = _engine_version(game, version)
     source = get_client().get_version_source(svc_game, svc_version)
-    return JsonResponse({"source_html": source.get("game_js", "") or source.get("source_html", "")})
+    path = (request.GET.get("path") or "").strip()
+    if not path:
+        return JsonResponse(
+            {"source_html": source.get("game_js", "") or source.get("source_html", "")}
+        )
+    key = _SOURCE_PATHS.get(path)
+    if key is None:
+        raise ApiError(NOT_FOUND, "No such file in this version.")
+    return JsonResponse({"source_html": source.get(key, "") or ""})
 
 
 @api_view("GET", auth=True)
@@ -419,7 +438,10 @@ def share(request, handle):
 
     game = _public_game(request, handle)
     session_hash = str(json_body(request).get("session_hash") or "")[:64]
-    record_share(game, user=request.user, session_hash=session_hash)
+    # Same per-session dedupe window as plays — repeat pings must not
+    # inflate share_count.
+    if not session_hash or cache.add(f"share:{game.id}:{session_hash}", 1, 1800):
+        record_share(game, user=request.user, session_hash=session_hash)
     return no_content()
 
 
@@ -501,7 +523,10 @@ def remix(request, handle):
         raise ApiError(NOT_FOUND, "No such game.")
     if not can_generate(request.user):
         raise ApiError(QUOTA_EXCEEDED, "You've hit today's generation limit.")
-    message = str(json_body(request).get("message") or "").strip()
+    raw_message = json_body(request).get("message")
+    message = str(raw_message or "").strip()
+    if raw_message is not None and not (1 <= len(message) <= 1000):
+        raise ApiError(VALIDATION_ERROR, "First-change messages need 1–1000 characters.")
     prompt = src.prompt or src.title_en or "a fun game"
     if message:
         prompt = f"{prompt}. {message}"
@@ -520,6 +545,13 @@ def remix(request, handle):
         type=JobType.REMIX, prompt=prompt, status=JobStatus.QUEUED,
     )
     Game.objects.filter(id=src.id).update(remix_count=F("remix_count") + 1)
+    if src.owner_id != request.user.id:
+        from social.models import Notification
+
+        Notification.objects.create(
+            recipient=src.owner, actor=request.user,
+            type=Notification.Type.REMIX, game=src,
+        )
     return JsonResponse({"new_game_id": str(game.id), "job_id": str(ref.id)})
 
 

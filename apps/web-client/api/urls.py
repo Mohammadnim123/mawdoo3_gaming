@@ -9,6 +9,9 @@ from . import views_auth, views_games, views_jobs, views_me, views_social
 urlpatterns = [
     # -- session shim (BFF parity) -------------------------------------------
     path("api/session", views_auth.session),
+    # useJobStream fetches the reference BFF's un-versioned stream path
+    # directly (the only raw fetch besides /api/session) — alias it.
+    path("api/jobs/<uuid:job_id>/stream", views_jobs.stream),
     # -- auth ------------------------------------------------------------------
     path("api/v1/auth/providers", views_auth.providers),
     path("api/v1/auth/signup", views_auth.signup),

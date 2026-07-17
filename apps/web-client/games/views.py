@@ -91,50 +91,18 @@ GENRES = ["runner", "platformer", "puzzle", "shooter", "arcade", "snake", "break
 
 @require_GET
 def home(request):
-    from django.contrib.auth import get_user_model
-
+    """Landing hero + the feed island. The island self-fetches everything from
+    /api/v1/games; the server only ships the SSR pending twin plus an sr-only
+    crawlable list of the first feed page."""
     sort = request.GET.get("sort", "for_you")
     if sort not in ("for_you", "trending", "new", "following"):
         sort = "for_you"
     genre = (request.GET.get("genre") or "").strip() or None
-    # One queryset builder for the server-rendered feed AND /feed.json — the
-    # overlay must open the exact sequence of cards the user is looking at.
     qs = _feed_queryset(request, sort, genre)
-
-    # Right rail: trending now + suggested creators.
-    trending = list(
-        Game.objects.filter(status=GameStatus.LIVE, visibility=Visibility.PUBLIC)
-        .order_by("-play_count", "-like_count")[:5]
-    )
-    User = get_user_model()
-    creators = User.objects.filter(
-        games__status=GameStatus.LIVE, games__visibility=Visibility.PUBLIC,
-        banned_at__isnull=True,
-    ).distinct().order_by("-follower_count")
-    if request.user.is_authenticated:
-        creators = creators.exclude(id=request.user.id)
-    suggested = list(creators[:4])
-
-    from urllib.parse import urlencode
-
-    from django.middleware.csrf import get_token
-
-    feed_query = urlencode({"sort": sort, **({"genre": genre} if genre else {})})
-    overlay_props = {
-        "csrfToken": get_token(request),
-        "locale": _locale(request),
-        "labels": _island_labels(_t(request)),
-        "feedUrl": f"/feed.json?{feed_query}",
-        "authenticated": request.user.is_authenticated,
-    }
     return render(request, "pages/home.html", {
         "games": list(qs[: settings.GAMES_PAGE_SIZE]),
         "sort": sort,
         "genre": genre,
-        "genres": GENRES,
-        "trending": trending,
-        "suggested": suggested,
-        "overlay_props": overlay_props,
     })
 
 
@@ -150,70 +118,6 @@ def _feed_queryset(request, sort: str, genre: str | None):
     if sort == "trending":
         return base.order_by("-play_count", "-like_count", "-published_at")
     return base.order_by("-published_at", "-created_at")
-
-
-@require_GET
-def feed_json(request):
-    """Playable feed for the overlay island: ordered games with everything the
-    vertical player needs (play_url + sandbox origin + social counts)."""
-    sort = request.GET.get("sort", "for_you")
-    genre = (request.GET.get("genre") or "").strip() or None
-    try:
-        offset = max(0, int(request.GET.get("offset", 0)))
-        limit = min(50, max(1, int(request.GET.get("limit", settings.GAMES_PAGE_SIZE))))
-    except ValueError:
-        offset, limit = 0, settings.GAMES_PAGE_SIZE
-
-    qs = _feed_queryset(request, sort, genre)
-    games = list(qs[offset : offset + limit + 1])
-    has_more = len(games) > limit
-    games = games[:limit]
-
-    liked_ids = saved_ids = set()
-    if request.user.is_authenticated and games:
-        from social.models import Like, Save
-
-        ids = [g.id for g in games]
-        liked_ids = set(
-            Like.objects.filter(user=request.user, game_id__in=ids)
-            .values_list("game_id", flat=True)
-        )
-        saved_ids = set(
-            Save.objects.filter(user=request.user, game_id__in=ids)
-            .values_list("game_id", flat=True)
-        )
-
-    locale = _locale(request)
-    items = [
-        {
-            "id": str(g.id),
-            "slug": g.slug,
-            "title": g.title(locale),
-            "genre": g.genre,
-            "summary": g.summary(locale),
-            "cover_url": g.cover_url,
-            "play_url": _game_src(g, locale),
-            "game_origin": _game_origin(g),
-            "owner": {
-                "handle": g.owner.handle,
-                "display_name": g.owner.display_name or g.owner.handle,
-                "avatar_url": g.owner.avatar_url,
-            },
-            "play_count": g.play_count,
-            "like_count": g.like_count,
-            "comment_count": g.comment_count,
-            "save_count": g.save_count,
-            "share_count": g.share_count,
-            "remix_count": g.remix_count,
-            "viewer": {"liked": g.id in liked_ids, "saved": g.id in saved_ids},
-        }
-        for g in games
-        if g.is_live
-    ]
-    return JsonResponse({
-        "items": items,
-        "next_offset": offset + limit if has_more else None,
-    })
 
 
 # ---------------------------------------------------------------------------
@@ -302,27 +206,50 @@ def studio_home(request):
 @login_required(login_url="/login")
 def studio(request, game_id):
     """`/studio/{gameId}` — existing-project workspace. The island resolves the
-    game through /api/v1/* (ownerGuard handles 403/404); the server-side owner
-    check stays as a hard 404 for strangers, and a page load still reconciles a
-    finished-while-away job (sync_job) so reloads land on fresh state."""
-    game = get_object_or_404(Game, id=game_id, owner=request.user)
-    job = game.jobs.order_by("-created_at").first()
-    if job is not None and (job.status in _ACTIVE or not game.is_live):
-        sync_job(job)
-        game.refresh_from_db()
+    game through /api/v1/* — ownerGuard renders the branded Lock EmptyState for
+    strangers/unknown ids (reference parity; no raw Django 404). Owner page
+    loads still reconcile a finished-while-away job (sync_job)."""
+    game = Game.objects.filter(id=game_id, owner=request.user).first()
+    if game is not None:
+        job = game.jobs.order_by("-created_at").first()
+        if job is not None and (job.status in _ACTIVE or not game.is_live):
+            sync_job(job)
+            game.refresh_from_db()
     return render(request, "workspace/studio.html", {
         "game": game,
-        "island_props": {"gameId": str(game.id)},
+        "island_props": {"gameId": str(game_id)},
+    })
+
+
+@login_required(login_url="/login")
+def studio_slug(request, handle):
+    """`/studio/{slug}` — hand-typed slugs resolve like the reference's
+    client-side ownerGuard: owner → canonical `/studio/{id}`, non-owner →
+    the public game page, unknown → the workspace guard screen."""
+    game = Game.objects.filter(slug=handle).first()
+    if game is not None:
+        if game.owner_id == request.user.id:
+            return redirect(f"/studio/{game.id}", permanent=True)
+        return redirect(f"/g/{game.slug}")
+    return render(request, "workspace/studio.html", {
+        "game": None,
+        "island_props": {"gameId": handle},
     })
 
 
 def game_studio_redirect(request, slug):
-    """`/g/{slug}/studio` — canonicalize into the workspace: the owner lands on
-    `/studio/{id}` (permanent), everyone else on the public game page."""
-    game = get_object_or_404(Game, slug=slug)
-    if request.user.is_authenticated and game.owner_id == request.user.id:
+    """`/g/{slug}/studio` — canonicalize into the workspace: anonymous visitors
+    log in first (reference middleware), the owner lands on `/studio/{id}`
+    (permanent), other users reach the workspace guard screen (the reference
+    also redirects them into /studio/{id} and lets the client guard decide)."""
+    if not request.user.is_authenticated:
+        return redirect(f"/login?next=/g/{slug}/studio")
+    game = Game.objects.filter(slug=slug).first()
+    if game is None:
+        return redirect(f"/g/{slug}")
+    if game.owner_id == request.user.id:
         return redirect(f"/studio/{game.id}", permanent=True)
-    return redirect(f"/g/{game.slug}")
+    return redirect(f"/studio/{game.id}")
 
 
 @login_required(login_url="/login")

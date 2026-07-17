@@ -1,4 +1,4 @@
-import{c as l,u as r,j as e,L as p,C as h,b as c,G as d}from"./chunks/I18nProvider-CJLfJKe0.js";import{C as m}from"./chunks/Card-Bx6Hr9Hk.js";import{u as x,D as g,L as u,m as f}from"./chunks/mount-DNROpbh3.js";import{S as k}from"./chunks/SegmentedControl-dnPbgab5.js";import{L as y}from"./chunks/languages-RWAfKrHM.js";import{P as j}from"./chunks/palette-DpjkyUPM.js";/**
+import{c as l,u as r,j as e,L as p,C as h,b as c,G as d}from"./chunks/I18nProvider-CJLfJKe0.js";import{C as m}from"./chunks/Card-Bx6Hr9Hk.js";import{u as x,D as g,L as u,m as f}from"./chunks/mount-B0aktbLt.js";import{S as k}from"./chunks/SegmentedControl-dnPbgab5.js";import{L as y}from"./chunks/languages-RWAfKrHM.js";import{P as j}from"./chunks/palette-DpjkyUPM.js";/**
  * @license lucide-react v0.525.0 - ISC
  *
  * This source code is licensed under the ISC license.

@@ -41,14 +41,20 @@
     ];
   }
 
+  /* Reference-exact behavior (useTypewriter.ts): the hook joins the phrase
+   * list on spaces and re-splits it inside the effect — so the SHIPPED
+   * reference types the examples WORD-BY-WORD, and reduced-motion settles on
+   * the first word. Bug-compatible on purpose ("match Codply exactly"). */
+  var words = examples.join(" ").split(" ").filter(Boolean);
+
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce) { ta.setAttribute("placeholder", examples[0]); return; }
+  if (reduce) { ta.setAttribute("placeholder", words[0] || ""); return; }
 
   /* Reference Typewriter timings: type 45 / delete 22 / hold 2200 / rest 450.
    * Steps by code POINT (Array.from) so Arabic and emoji never tear; never
    * pauses — while the user types, the value covers the placeholder anyway. */
   var TYPE = 45, DELETE = 22, HOLD = 2200, REST = 450;
-  var phrases = examples.map(function (p) { return Array.from(p); });
+  var phrases = words.map(function (p) { return Array.from(p); });
   var i = 0, pos = 0, deleting = false;
   function tick() {
     var word = phrases[i];

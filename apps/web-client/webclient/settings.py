@@ -203,6 +203,9 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Codply <noreply@codpl
 # Branding
 # --------------------------------------------------------------------------
 SITE_NAME = "Codply"
+# Canonical public origin for SEO identity (canonical/OG/JSON-LD). Empty =
+# derive from the request (dev); set in prod so proxies can't skew it.
+SITE_ORIGIN = os.environ.get("SITE_ORIGIN", "")
 SITE_TAGLINE_EN = "Type it. Play it."
 SITE_TAGLINE_AR = "اكتبها. العبها."
 

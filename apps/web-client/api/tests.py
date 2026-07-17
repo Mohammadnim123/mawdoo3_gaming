@@ -26,6 +26,9 @@ User = get_user_model()
 
 
 def make_user(email="p1@example.com", **kwargs):
+    # Password logins require a verified email (reference: signup activates
+    # the password via the emailed link) — fixtures are verified users.
+    kwargs.setdefault("email_verified", True)
     return User.objects.create_user(email=email, password="password123", **kwargs)
 
 
@@ -85,6 +88,17 @@ class AuthApiTests(TestCase):
     def test_me_requires_auth(self):
         resp = self.client.get("/api/v1/me")
         self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.json()["error"], "unauthorized")
+
+    def test_password_inactive_until_email_verified(self):
+        make_user("unverified@example.com", email_verified=False)
+        resp = self.client.post(
+            "/api/v1/auth/login",
+            data=json.dumps({"email": "unverified@example.com", "password": "password123"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 401)
+        # Same generic envelope as a wrong password (enumeration-safe).
         self.assertEqual(resp.json()["error"], "unauthorized")
 
 

@@ -216,11 +216,27 @@ class StudioRoutesTests(TestCase):
         # Bare shell: no site chrome — the island renders its own top bar.
         self.assertNotContains(r, "chrome/_topbar")
 
-    def test_studio_game_owner_only(self):
+    def test_studio_strangers_get_the_guard_screen_not_a_404(self):
+        # Reference parity: the island's ownerGuard renders the branded Lock
+        # EmptyState — the server always serves the shell.
         game = _live_public_game(self.owner)
         stranger = User.objects.create_user(email="s@x.com", password="pass12345")
         self.client.force_login(stranger)
-        self.assertEqual(self.client.get(f"/studio/{game.id}").status_code, 404)
+        r = self.client.get(f"/studio/{game.id}")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="workspace-island"')
+
+    def test_studio_slug_resolves_like_owner_guard(self):
+        game = _live_public_game(self.owner)
+        self.client.force_login(self.owner)
+        r = self.client.get("/studio/my-game")
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["Location"], f"/studio/{game.id}")
+        stranger = User.objects.create_user(email="s2@x.com", password="pass12345")
+        self.client.force_login(stranger)
+        r = self.client.get("/studio/my-game")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/g/my-game")
 
     def test_game_studio_redirects_owner_to_workspace(self):
         game = _live_public_game(self.owner)
@@ -229,11 +245,19 @@ class StudioRoutesTests(TestCase):
         self.assertEqual(r.status_code, 301)
         self.assertEqual(r.headers["Location"], f"/studio/{game.id}")
 
-    def test_game_studio_redirects_non_owner_to_game_page(self):
+    def test_game_studio_anon_logs_in_first(self):
         _live_public_game(self.owner)
         r = self.client.get("/g/my-game/studio")
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(r.headers["Location"], "/g/my-game")
+        self.assertEqual(r.headers["Location"], "/login?next=/g/my-game/studio")
+
+    def test_game_studio_sends_non_owner_to_the_guard(self):
+        game = _live_public_game(self.owner)
+        stranger = User.objects.create_user(email="s3@x.com", password="pass12345")
+        self.client.force_login(stranger)
+        r = self.client.get("/g/my-game/studio")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], f"/studio/{game.id}")
 
     def test_create_renders_island_with_idea_props(self):
         self.client.force_login(self.owner)
@@ -439,28 +463,3 @@ class VersionsApiTests(TestCase):
         self.assertIsNone(fake.rolled_back_to)  # engine never called
         self.game.refresh_from_db()
         self.assertEqual(self.game.current_version_id, self.v2.id)  # unchanged
-
-
-class FeedJsonTests(TestCase):
-    def test_feed_json_lists_playable_games(self):
-        owner = User.objects.create_user(
-            email="o@x.com", password="pass12345", handle="maker"
-        )
-        _live_public_game(owner)
-        r = self.client.get("/feed.json")
-        self.assertEqual(r.status_code, 200)
-        payload = r.json()
-        self.assertEqual(len(payload["items"]), 1)
-        item = payload["items"][0]
-        self.assertEqual(item["slug"], "my-game")
-        self.assertIn(PLAY_URL, item["play_url"])
-        self.assertEqual(item["game_origin"], "http://localhost:8002")
-        self.assertEqual(item["owner"]["handle"], "maker")
-        self.assertIsNone(payload["next_offset"])
-
-    def test_feed_json_excludes_private(self):
-        owner = User.objects.create_user(email="o@x.com", password="pass12345")
-        game = _live_public_game(owner)
-        game.visibility = Visibility.PRIVATE
-        game.save(update_fields=["visibility"])
-        self.assertEqual(len(self.client.get("/feed.json").json()["items"]), 0)

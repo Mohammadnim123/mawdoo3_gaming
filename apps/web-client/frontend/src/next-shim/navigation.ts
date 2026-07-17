@@ -41,8 +41,29 @@ export interface AppRouterInstance {
   prefetch(href: string): void;
 }
 
+/** Soft-navigation targets: same-origin /g/{slug} pushes render as the
+ * in-place player overlay (the reference's intercepted route). Everything
+ * else is a real cross-page navigation (Django owns the routes). */
+function isOverlayTarget(href: string): boolean {
+  try {
+    const url = new URL(href, window.location.href);
+    return (
+      url.origin === window.location.origin &&
+      /^\/g\/[^/]+$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function useRouter(): AppRouterInstance {
-  const push = useCallback((href: string) => window.location.assign(href), []);
+  const push = useCallback((href: string) => {
+    if (isOverlayTarget(href)) {
+      window.history.pushState(null, "", href);
+      return;
+    }
+    window.location.assign(href);
+  }, []);
   const replace = useCallback((href: string) => window.location.replace(href), []);
   const back = useCallback(() => window.history.back(), []);
   const forward = useCallback(() => window.history.forward(), []);

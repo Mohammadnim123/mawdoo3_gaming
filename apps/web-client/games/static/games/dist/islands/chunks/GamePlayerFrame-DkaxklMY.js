@@ -1,4 +1,4 @@
-import{c as _,r,j as a,M as J,b as Q}from"./I18nProvider-CJLfJKe0.js";import{G as D}from"./gamepad-2-DSa3_8g3.js";import{R as Z}from"./rotate-ccw-eY_8esBM.js";import{g as ee}from"./index-z0QEev9Y.js";import{j as te}from"./useSocial-Dqy2Da9G.js";/**
+import{c as _,r,j as a,M as J,b as Q}from"./I18nProvider-CJLfJKe0.js";import{G as D}from"./gamepad-2-DSa3_8g3.js";import{R as Z}from"./rotate-ccw-eY_8esBM.js";import{g as ee}from"./index-CoHWWz3_.js";import{j as te}from"./useSocial-D818yj56.js";/**
  * @license lucide-react v0.525.0 - ISC
  *
  * This source code is licensed under the ISC license.

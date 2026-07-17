@@ -6,6 +6,15 @@ RTL_LOCALES = {"ar"}
 SUPPORTED = {"ar", "en"}
 
 
+def _accept_language(header: str) -> str | None:
+    """First supported language from an Accept-Language header, or None."""
+    for part in header.split(","):
+        code = part.split(";")[0].strip().lower()[:2]
+        if code in SUPPORTED:
+            return code
+    return None
+
+
 class LocaleMiddleware:
     """Resolve the active locale (EN/AR) per request from ?lang / cookie / default,
     expose it as ``request.locale`` + ``request.text_dir``, and persist an explicit
@@ -18,8 +27,12 @@ class LocaleMiddleware:
     def __call__(self, request):
         chosen = request.GET.get("lang")
         cookie = request.COOKIES.get(settings.LOCALE_COOKIE_NAME)
+        # Reference resolution order (server/locale.ts): explicit choice →
+        # cookie → Accept-Language → default.
+        header = _accept_language(request.headers.get("Accept-Language", ""))
         locale = next(
-            (v for v in (chosen, cookie, settings.WEB_DEFAULT_LOCALE) if v in SUPPORTED),
+            (v for v in (chosen, cookie, header, settings.WEB_DEFAULT_LOCALE)
+             if v in SUPPORTED),
             "en",
         )
         request.locale = locale

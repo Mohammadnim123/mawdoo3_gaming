@@ -6,7 +6,7 @@ from billing.services import grant_initial
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -45,7 +45,9 @@ def _auth_island(request, screen: str, **extra: str | None):
 @require_http_methods(["GET", "POST"])
 def login_view(request):
     nxt = _safe_next(request)
-    if request.user.is_authenticated:
+    # Reference parity: /login renders for authenticated users too (no
+    # middleware redirect; the screen itself is harmless when logged in).
+    if request.user.is_authenticated and request.method == "POST":
         return redirect(nxt)
 
     mode = request.POST.get("mode") or request.GET.get("mode") or "login"
@@ -207,17 +209,29 @@ def me_update_view(request):
 
 
 def profile_view(request, handle: str):
-    from games.models import Game, GameStatus, Visibility
+    """Profile shell. Unknown/banned handles still render the island — the
+    ProfileScreen shows its own "@{handle} isn't here" EmptyState (reference
+    parity); the page just goes noindex with the bare-@handle title."""
+    profile_user = User.objects.filter(handle=handle, banned_at__isnull=True).first()
+    meta_description = ""
+    if profile_user is not None:
+        if profile_user.bio:
+            meta_description = profile_user.bio
+        else:
+            # Mirrors reference seo.profile() fallback copy (English-only there too).
+            from games.models import GameStatus, Visibility
 
-    profile_user = get_object_or_404(User, handle=handle, banned_at__isnull=True)
-    games = Game.objects.filter(
-        owner=profile_user, status=GameStatus.LIVE, visibility=Visibility.PUBLIC,
-    )
-    viewer_following = False
-    if request.user.is_authenticated and request.user != profile_user:
-        viewer_following = request.user.following_set.filter(following=profile_user).exists()
+            games = profile_user.games.filter(
+                status=GameStatus.LIVE, visibility=Visibility.PUBLIC
+            ).count()
+            name = profile_user.display_name or f"@{profile_user.handle}"
+            meta_description = (
+                f"{name} makes playable browser games on Codply — "
+                f"{games} games, {profile_user.follower_count} followers. "
+                "Play and remix their creations."
+            )
     return render(request, "profile/detail.html", {
         "profile_user": profile_user,
-        "games": games,
-        "viewer_following": viewer_following,
+        "handle": handle,
+        "profile_meta_description": meta_description,
     })

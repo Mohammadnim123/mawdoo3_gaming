@@ -134,8 +134,17 @@ Legend: ✅ shipped & verified · 🟡 shipped with a documented difference · �
 
 ## 4. Remaining documented differences (all minor)
 
-The first pass's "deliberate non-goals" have all shipped (see §0). What
-remains intentionally different:
+The first pass's "deliberate non-goals" have all shipped (see §0), and a
+four-agent adversarial re-audit (2026-07-17: glue audits of studio/create,
+feed/game/chrome, account/auth/legal + a 241-check live feature sweep)
+had every confirmed finding fixed — including the SSE contract rewrite
+(`/api/jobs/{id}/stream` alias + done/failed frame translation), PATCH
+GameDetail shape, per-file `?path=` source reads, avatar uploads (Pillow),
+play/share dedupe, remix validation + notification, generate idempotency,
+email-verify-gated passwords, anon-rendered billing/settings, `/feed`
+redirect, unknown-profile guard screens, Accept-Language negotiation,
+canonical/OG/Twitter/Person metadata, and the home page's full SSR pending
+twin. What remains intentionally different:
 
 - **Draft view granularity**: draft files appear when codegen finishes (one
   snapshot per stage), not token-by-token — our engine doesn't stream LLM
@@ -152,3 +161,17 @@ remains intentionally different:
 - **OAuth**: routes + screens exist; providers stay disabled until client
   ids are configured (`/auth/oauth/*/start` → generic login error, exactly
   like a reference deployment with no providers configured).
+- **Admin surface**: the reference's `/api/v1/admin/*` JSON endpoints are
+  unrouted — Django admin is the CMS/moderation surface (scorecard §Platform).
+- **`options.generation_mode`** (reference dev A/B toggle) is accepted and
+  ignored — our engine has one pipeline.
+- **Hero typewriter is bug-compatible**: the reference's `useTypewriter`
+  re-splits its phrases on spaces, so the SHIPPED Codply hero types the
+  examples word-by-word; ours now replicates that exactly. If sentence
+  cycling is preferred, drop the `join(" ").split(" ")` line in
+  `games/static/games/js/hero.js`.
+- **Fonts** load from Google Fonts CDN instead of self-hosted next/font
+  files (same families/weights; possible glyph-version drift).
+- **Default locale** stays `WEB_DEFAULT_LOCALE=ar` after cookie and
+  Accept-Language negotiation (reference defaults to `en`) — a deliberate
+  product choice, env-switchable.

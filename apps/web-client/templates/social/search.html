@@ -6,6 +6,7 @@
    seo.page noindex). The <noscript> grid keeps the server-rendered results
    usable without JS (the view still computes them). #}
 {% block title %}{{ t.nav_search }} · {{ site_name }}{% endblock %}
+{% block description %}{{ t.search_hint_description }}{% endblock %}
 {% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block main_class %}w-full{% endblock %}
 {% block content %}

@@ -3,9 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{% block title %}{{ site_name }}{% endblock %}</title>
-  <meta name="description" content="{% block description %}{{ t.hero_subtitle }}{% endblock %}">
+  <title>{% block title %}{{ t.meta_default_title }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ t.meta_description }}{% endblock %}">
   <meta name="theme-color" content="#0a0a0f">
+  {# Canonical + social cards (reference domain/seo/seo.ts page() + layout    #}
+  {# defaults). Shareable pages override the og_*/twitter blocks to mirror    #}
+  {# their title/description; private noindex pages keep the site defaults.   #}
+  <link rel="canonical" href="{% block canonical %}{{ site_origin }}{{ request.path }}{% endblock %}">
+  <meta property="og:title" content="{% block og_title %}{{ t.meta_default_title }}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}{{ t.meta_description }}{% endblock %}">
+  <meta property="og:url" content="{{ site_origin }}{{ request.path }}">
+  <meta property="og:site_name" content="{{ site_name }}">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+  {% block og_image %}{% endblock %}
+  <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
+  <meta name="twitter:title" content="{% block twitter_title %}{{ t.meta_default_title }}{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}{{ t.meta_description }}{% endblock %}">
 
   {# Pre-paint theme boot (reference ThemeScript): stored "fp-theme" choice,  #}
   {# else auto (light 07:00–19:00 local). Sets colorScheme so native controls #}
@@ -34,8 +47,8 @@
 </head>
 <body class="flex min-h-dvh flex-col bg-canvas text-ink font-sans antialiased{% block body_class %}{% endblock %}">
   {# E34 — sitewide Organization + WebSite JSON-LD (reference domain/seo/schema.ts). #}
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","@id":"{{ request.scheme }}://{{ request.get_host }}/#organization","name":"{{ site_name }}","url":"{{ request.scheme }}://{{ request.get_host }}","logo":"{{ request.scheme }}://{{ request.get_host }}/icon.svg","description":"Codply turns your words into real browser games. Type an idea, play it in minutes — then post it, share it and remix everyone else's."}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"{{ request.scheme }}://{{ request.get_host }}/#website","name":"{{ site_name }}","url":"{{ request.scheme }}://{{ request.get_host }}","description":"Codply turns your words into real browser games. Type an idea, play it in minutes — then post it, share it and remix everyone else's.","publisher":{"@id":"{{ request.scheme }}://{{ request.get_host }}/#organization"}}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","@id":"{{ site_origin }}/#organization","name":"{{ site_name }}","url":"{{ site_origin }}","logo":"{{ site_origin }}/icon.svg","description":"Codply turns your words into real browser games. Type an idea, play it in minutes — then post it, share it and remix everyone else's."}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"{{ site_origin }}/#website","name":"{{ site_name }}","url":"{{ site_origin }}","description":"Codply turns your words into real browser games. Type an idea, play it in minutes — then post it, share it and remix everyone else's.","publisher":{"@id":"{{ site_origin }}/#organization"}}</script>
 
   {% block chrome %}{% include "chrome/_topbar.html" %}{% endblock %}
 

@@ -253,6 +253,19 @@ def job_status_value(ref: GenerationJobRef) -> str:
     return _JOB_STATUS.get(ref.status, "running")
 
 
+def _contract_questions(questions) -> list | None:
+    """Engine clarify questions → contract shape (`default_option_id` →
+    `default`; everything else passes through)."""
+    if not questions:
+        return None
+    out = []
+    for q in questions:
+        if isinstance(q, dict) and "default" not in q and q.get("default_option_id"):
+            q = {**q, "default": q["default_option_id"]}
+        out.append(q)
+    return out
+
+
 def job_payload(
     ref: GenerationJobRef,
     locale: str,
@@ -273,7 +286,7 @@ def job_payload(
         "game_id": str(game.id) if game else None,
         "play_url": play_src(game.play_url, locale) if (game and game.is_live) else None,
         "error_user_msg": error_user_msg,
-        "questions": ref.questions or None,
+        "questions": _contract_questions(ref.questions),
     }
 
 

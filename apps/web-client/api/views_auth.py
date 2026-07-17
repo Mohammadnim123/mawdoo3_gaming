@@ -79,7 +79,9 @@ def login_password(request):
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
     user = authenticate(request, username=email, password=password)
-    if user is None or user.is_banned:
+    if user is None or user.is_banned or not user.email_verified:
+        # One generic message for every failure mode (enumeration-safe;
+        # unverified accounts activate their password via the emailed link).
         raise ApiError(UNAUTHORIZED, "Invalid email or password.", status=401)
     return JsonResponse(_auth_response(request, user))
 
@@ -131,7 +133,12 @@ def magic_link_verify(request):
     token = LoginToken.redeem(raw, LoginToken.Purpose.LOGIN)
     if token is None or token.user is None:
         raise ApiError(UNAUTHORIZED, "That code didn't work — request a new one.", status=401)
-    return JsonResponse(_auth_response(request, token.user))
+    user = token.user
+    if not user.email_verified:
+        # A redeemed magic link proves inbox ownership.
+        user.email_verified = True
+        user.save(update_fields=["email_verified"])
+    return JsonResponse(_auth_response(request, user))
 
 
 @api_view("POST")
@@ -165,7 +172,11 @@ def password_reset(request):
     user = token.user
     user.set_password(password)
     user.auth_epoch += 1  # invalidate outstanding links
-    user.save(update_fields=["password", "auth_epoch"])
+    if not user.email_verified:
+        user.email_verified = True  # the reset link proves inbox ownership
+        user.save(update_fields=["password", "auth_epoch", "email_verified"])
+    else:
+        user.save(update_fields=["password", "auth_epoch"])
     return JsonResponse(_auth_response(request, user))
 
 

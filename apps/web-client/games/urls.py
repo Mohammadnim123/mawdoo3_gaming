@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 
 from games import views
 
@@ -6,10 +7,13 @@ app_name = "games"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    # v0.7 reference parity: the home page IS the feed — old /feed links 301.
+    path("feed", RedirectView.as_view(url="/", permanent=True, query_string=True)),
     path("create", views.create, name="create"),
-    path("feed.json", views.feed_json, name="feed_json"),
     path("studio", views.studio_home, name="studio_home"),
     path("studio/<uuid:game_id>", views.studio, name="studio"),
+    # Hand-typed slugs (uuid route wins for real ids; jobs/ is more specific).
+    path("studio/<str:handle>", views.studio_slug, name="studio_slug"),
     path("studio/jobs/<uuid:job_ref_id>/stream", views.stream_proxy, name="stream"),
     path("studio/jobs/<uuid:job_ref_id>/status", views.job_status, name="job_status"),
     path("studio/jobs/<uuid:job_ref_id>/answers", views.job_answers, name="job_answers"),

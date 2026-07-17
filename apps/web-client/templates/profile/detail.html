@@ -2,13 +2,26 @@
 {% load static %}
 {# /u/{handle} — the profile island (reference app/u/[handle]/page.tsx). The
    handle is the only server prop; the screen self-fetches the profile, games
-   and (on your own handle) the liked/saved/history library tabs. Public,
-   indexable — title/description mirror the reference seo.profile metadata. #}
-{% block title %}{% if profile_user.display_name %}{{ profile_user.display_name }}{% else %}@{{ profile_user.handle }}{% endif %} · {{ site_name }}{% endblock %}
-{% block description %}{% if profile_user.bio %}{{ profile_user.bio }}{% else %}{{ t.hero_subtitle }}{% endif %}{% endblock %}
+   and (on your own handle) the liked/saved/history library tabs. Known
+   handles are public + indexable with seo.profile metadata; unknown/banned
+   handles still render (the screen shows its own EmptyState) but go noindex
+   with the bare-@handle title — reference parity. #}
+{% block title %}{% if profile_user %}{% if profile_user.display_name %}{{ profile_user.display_name }}{% else %}@{{ profile_user.handle }}{% endif %}{% else %}@{{ handle }}{% endif %} · {{ site_name }}{% endblock %}
+{% block description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
+{% block og_title %}{% if profile_user %}{{ profile_user.display_name|default:profile_user.handle }}{% else %}{{ t.meta_default_title }}{% endif %}{% endblock %}
+{% block og_description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
+{% block og_type %}profile{% endblock %}
+{% block twitter_title %}{% if profile_user %}{{ profile_user.display_name|default:profile_user.handle }}{% else %}{{ t.meta_default_title }}{% endif %}{% endblock %}
+{% block twitter_description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
+{% block head %}
+{% if not profile_user %}<meta name="robots" content="noindex, nofollow">{% endif %}
+{% if profile_user %}
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "ProfilePage", "mainEntity": {"@type": "Person", "name": "{{ profile_user.display_name|default:profile_user.handle|escapejs }}", "alternateName": "@{{ profile_user.handle|escapejs }}", "url": "{{ site_origin }}/u/{{ profile_user.handle|escapejs }}"{% if profile_user.bio %}, "description": "{{ profile_user.bio|escapejs }}"{% endif %}{% if profile_user.avatar_url %}, "image": "{{ profile_user.avatar_url|escapejs }}"{% endif %}}}</script>
+{% endif %}
+{% endblock %}
 {% block main_class %}w-full{% endblock %}
 {% block content %}
-<script id="profile-island-props" type="application/json">{"handle": "{{ profile_user.handle|escapejs }}"}</script>
+<script id="profile-island-props" type="application/json">{"handle": "{{ handle|escapejs }}"}</script>
 <div id="profile-island">
   {# Server skeleton mirroring ProfileScreen's isPending state. #}
   <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8" aria-hidden="true">
