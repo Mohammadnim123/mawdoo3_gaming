@@ -221,6 +221,12 @@ COLOR LAW:
   ~20% lightness. Backgrounds are never #000000.
 - Never encode danger by hue alone (~8% of male players are red-green colorblind): pair the
   danger color with shape (spikes), motion (~2Hz pulse), or an icon.
+- An explicit creator revision request about appearance — different or more-visible colors,
+  higher contrast, or removing transparency so game elements read clearly — OVERRIDES both
+  the palette restriction and any "keep the current look" instruction: make the requested
+  change unmistakably visible, introducing whatever colors/opacity it needs even if they go
+  beyond the blueprint palette. (On a fresh build with no such request, stay within the
+  palette.)
 
 GAME FEEL (juice) — feel is response, not fidelity:
 - Every player input produces a visible AND audible reaction within 50ms. Exaggerate the
@@ -386,9 +392,26 @@ def build_code(
     previous_section: str,
     feedback: str,
     art_section: str = "",
+    edit_goal: str = "",
 ) -> tuple[str, str]:
     system = CODE_SYSTEM.replace("{contract}", contract)
+    # On an edit, lead with the creator's goal so it is read BEFORE the "build
+    # exactly this blueprint" framing — otherwise a small visual request (colors,
+    # transparency, size) gets drowned out by the blueprint + "keep the look"
+    # signals and the same game comes back unchanged.
+    goal_header = ""
+    if edit_goal:
+        goal_header = (
+            "You are EDITING an existing game. The creator's request is the GOAL of this "
+            "edit and is authoritative — it overrides the 'build exactly this blueprint' and "
+            "'keep the current look' defaults wherever they conflict with it:\n"
+            f'  "{edit_goal}"\n'
+            "Apply it fully and make its effect clearly visible in the running game; keep "
+            "everything the request does not touch the same. The current implementation and "
+            "the full request detail are below the blueprint.\n\n"
+        )
     user = (
+        f"{goal_header}"
         f"Blueprint (build exactly this):\n```json\n{blueprint_json}\n```\n"
         f"{art_section}{previous_section}{feedback}"
     )
@@ -413,8 +436,14 @@ Rules:
   tweaks — stays exactly as it is unless the request touches it.
 - Difficulty/speed/size requests ("make it faster", "أصعب", "more lives") are usually just
   new values for existing tweaks; prefer that over structural changes.
-- Content changes (new rule, different win condition, new text) must update core_rule /
-  rules / ui_strings coherently, keeping every string bilingual (natural Arabic AND English).
+- Appearance requests are REAL design changes — encode them, never ignore them. Requests
+  about colors, contrast, visibility ("make X and O easier to see"), transparency/opacity
+  ("the board is too see-through, remove the transparency"), or element size/proportion MUST
+  be written concretely into visual_style (and any field they touch): rewrite the relevant
+  part of the visual_style paragraph, and when the creator wants different or more-visible
+  colors CHANGE THE ACTUAL HEX VALUES of the affected palette roles so the new colors have
+  strong contrast against whatever they sit on. Returning a visual_style that is unchanged
+  when the creator asked to change how the game LOOKS is a failed revision.
 - Keep the game SMALL and keep the same schema. Never drop ui_strings the game still needs.
 """
 
@@ -481,8 +510,20 @@ This is a REVISION of an existing, gate-approved game. Its current implementatio
 {game_css}
 ```
 
-The creator asked: "{instruction}"
+THE CREATOR'S REQUEST (the GOAL of this edit — authoritative):
+"{instruction}"
 
-Keep the structure, look and feel of this implementation. Apply the MINIMAL changes needed
-to satisfy the revised blueprint and the creator's request — do not rewrite from scratch.
+Apply that request FULLY and make its effect unmistakably visible in the running game. It
+OVERRIDES the "keep the current look" default and the blueprint-palette restriction wherever
+they conflict with it: if the creator asks for more-visible colors or less transparency,
+actually change the colors/opacity in the code (game.css background-color, canvas fillStyle,
+globalAlpha, rgba() alphas) — even to colors beyond the current palette — instead of
+reproducing the current styling for the exact thing they asked to change.
+
+Everything the request does NOT touch keeps the same structure, look and feel — apply the
+MINIMAL changes needed, do not rewrite from scratch. But if the current code already renders
+the thing the creator is asking to change (e.g. semi-transparent cells they still can't see
+through), that small styling clearly did not work: make a bigger, more direct change this
+time — set an explicit opaque background-color and a high-contrast mark color — not the same
+timid tweak again.
 """

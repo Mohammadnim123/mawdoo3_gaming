@@ -36,6 +36,15 @@ _SPRITE_SUFFIX = (
     "whole subject in frame, no cropping, no text"
 )
 
+#: Cover prefix (the Codply E23/E30 poster pattern): unlike the backdrop, a
+#: feed cover WANTS a hero and the title lettered in — so this asks for a
+#: dramatic, friendly store poster and leaves text policy to the composed
+#: prompt (which bakes the game's title logo into the art).
+_COVER_PREFIX = (
+    "premium mobile-game poster cover art, single bold hero composition, "
+    "dramatic cinematic lighting, vibrant, eye-catching and friendly, "
+)
+
 
 class ArtError(Exception):
     """Painting failed — callers degrade to the procedural backdrop."""
@@ -47,11 +56,15 @@ class GeminiArtClient:
         api_key: str,
         *,
         model: str,
+        cover_model: str | None = None,
         base_url: str = "https://generativelanguage.googleapis.com",
         timeout_seconds: float = 90.0,
     ) -> None:
         self._api_key = api_key
         self._model = model
+        # Covers can render on a stronger image model than backdrops — text
+        # lettering is the hard part, and Nano Banana Pro is far better at it.
+        self._cover_model = cover_model or model
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
 
@@ -65,7 +78,15 @@ class GeminiArtClient:
             f"mobile game sprite art of {brief}{_SPRITE_SUFFIX}", "1:1"
         )
 
-    async def _generate(self, prompt: str, aspect_ratio: str) -> bytes:
+    async def paint_cover(self, prompt: str, aspect_ratio: str = "16:9") -> bytes:
+        """Paint a feed-card poster: hero + baked-in title logo (16:9)."""
+        return await self._generate(
+            f"{_COVER_PREFIX}{prompt}", aspect_ratio, model=self._cover_model
+        )
+
+    async def _generate(
+        self, prompt: str, aspect_ratio: str, *, model: str | None = None
+    ) -> bytes:
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -73,7 +94,7 @@ class GeminiArtClient:
                 "imageConfig": {"aspectRatio": aspect_ratio},
             },
         }
-        url = f"{self._base_url}/v1beta/models/{self._model}:generateContent"
+        url = f"{self._base_url}/v1beta/models/{model or self._model}:generateContent"
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(

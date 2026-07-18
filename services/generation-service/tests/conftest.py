@@ -64,6 +64,11 @@ def boot_client(tmp_path, monkeypatch, **env: str):
     monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("STORAGE_LOCAL_DIR", str(tmp_path / "storage"))
     monkeypatch.setenv("GATE_NODE_SYNTAX_CHECK", "false")
+    # Image generation is OFF by default in tests: a real GEMINI_API_KEY in a
+    # developer .env would otherwise make the real pipeline attempt live image
+    # calls (backdrop + poster) and hang. Suites that exercise art opt in.
+    monkeypatch.setenv("FEATURE_BACKGROUND_ART", "false")
+    monkeypatch.setenv("FEATURE_COVER_POSTER", "false")
     for key, value in env.items():
         monkeypatch.setenv(key, value)
 

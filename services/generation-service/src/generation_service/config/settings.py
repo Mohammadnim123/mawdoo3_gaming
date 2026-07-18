@@ -95,6 +95,11 @@ class ArtSettings(_Base):
 
     gemini_api_key: str = ""
     gemini_image_model: str = "gemini-2.5-flash-image"
+    # Feed-card posters. Lettering the title into the art is the hard part;
+    # gemini-3-pro-image ("Nano Banana Pro") renders it best — bump this when
+    # the key has access. Defaults to the backdrop model so it works out of
+    # the box with any Gemini image key.
+    gemini_cover_model: str = "gemini-2.5-flash-image"
     gemini_base_url: str = "https://generativelanguage.googleapis.com"
     art_timeout_seconds: float = 90.0
 
@@ -139,6 +144,7 @@ class PipelineSettings(_Base):
 class FeatureFlags(_Base):
     feature_llm_review: bool = True  # deep logic review in the gate (kill switch)
     feature_background_art: bool = True  # painted bg.png backdrop (needs GEMINI_API_KEY)
+    feature_cover_poster: bool = True  # painted feed-card poster (needs GEMINI_API_KEY)
     feature_tweaks_api: bool = True  # chat-edit an existing game (kill switch)
     feature_clarify: bool = True  # pause on clarifying questions for ambiguous prompts
     feature_share_links: bool = False

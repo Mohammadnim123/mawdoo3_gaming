@@ -50,6 +50,7 @@ class GenerationState(TypedDict, total=False):
     blueprint: GameBlueprint
     background_art: bytes | None  # painted bg.png (None → procedural backdrop)
     sprites: dict[str, bytes]  # painted transparent sprites {file_name: png}
+    cover_art: bytes | None  # painted feed-card poster (None → bg copy / SVG)
     code: GeneratedGameCode
     gate_report: GateReport
     bundle_files: dict[str, bytes]

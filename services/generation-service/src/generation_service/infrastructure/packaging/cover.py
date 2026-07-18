@@ -3,14 +3,17 @@
 Best-effort by contract: callers must treat any failure here as cosmetic —
 a game without a cover is fine, a failed build because of a cover is not.
 
-Two rungs, mirroring Codply's guarantee that every published version has a
-poster:
+Three rungs, mirroring Codply's guarantee that every published version has a
+poster (best rung wins):
 
-1. The bundle painted a world backdrop (bg.png) → ``cover.png`` is a copy of
-   it (the backdrop IS the game's look).
-2. No painted art → a small procedural ``cover.svg``: the game's title over a
-   135° two-color gradient derived from the blueprint's palette (the hex
-   colors AI#1 wrote into ``visual_style``), falling back to brand
+1. The pipeline painted a dedicated feed-card poster (hero + the title
+   lettered into the art) → ``cover.png`` is that poster. This is the good
+   one — a real store-style key-art card.
+2. No poster, but a world backdrop (bg.png) exists → ``cover.png`` is a copy
+   of it (the backdrop IS the game's look).
+3. No painted art at all → a small procedural ``cover.svg``: the game's title
+   over a 135° two-color gradient derived from the blueprint's palette (the
+   hex colors AI#1 wrote into ``visual_style``), falling back to brand
    violet → cyan.
 """
 
@@ -90,11 +93,15 @@ async def write_cover(
     prefix: str,
     bundle_files: dict[str, bytes],
     blueprint: GameBlueprint,
+    cover_art: bytes | None = None,
 ) -> str:
     """Write the cover next to the bundle and return its file name.
 
     Raises on storage errors — callers wrap this in a best-effort try/except
     (a cover must never block or fail a publish)."""
+    if cover_art:
+        await storage.put(f"{prefix}/{COVER_PNG}", cover_art, "image/png")
+        return COVER_PNG
     background = bundle_files.get(OPTIONAL_ART_FILE)
     if background:
         await storage.put(f"{prefix}/{COVER_PNG}", background, "image/png")

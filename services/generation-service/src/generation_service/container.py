@@ -118,18 +118,21 @@ class Container:
                 max_output_tokens=s.ai.llm_max_output_tokens,
             )
 
-        # Background painting — optional quality lever; silently absent
-        # without a key so local setups keep working with zero config.
+        # Image generation — optional quality lever powering two features
+        # (painted backdrop + feed-card poster); silently absent without a key
+        # so local setups keep working with zero config.
         art = None
-        if s.features.feature_background_art and s.art.gemini_api_key:
+        art_wanted = s.features.feature_background_art or s.features.feature_cover_poster
+        if art_wanted and s.art.gemini_api_key:
             art = GeminiArtClient(
                 s.art.gemini_api_key,
                 model=s.art.gemini_image_model,
+                cover_model=s.art.gemini_cover_model,
                 base_url=s.art.gemini_base_url,
                 timeout_seconds=s.art.art_timeout_seconds,
             )
         else:
-            logger.info("background painting disabled (feature flag off or no GEMINI_API_KEY)")
+            logger.info("image generation disabled (both art flags off or no GEMINI_API_KEY)")
 
         nodes = GenerationNodes(
             understanding_llm=structured(s.ai.understanding_model),
@@ -140,6 +143,8 @@ class Container:
             storage=self.storage,
             llm_log=self.llm_log,
             art=art,
+            background_enabled=s.features.feature_background_art,
+            cover_enabled=s.features.feature_cover_poster,
         )
         self.pipeline = GenerationPipeline(
             nodes,

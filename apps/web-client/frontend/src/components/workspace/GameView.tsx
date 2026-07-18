@@ -57,6 +57,20 @@ export function GameView({
     if (state.autoMountUrl !== null) setMountedPlayUrl(state.autoMountUrl);
   }, [state.autoMountUrl, setMountedPlayUrl]);
 
+  // A newly published version auto-advances the preview. When the creator asks
+  // for an edit they expect to SEE the result, not hunt for a chip — pinning
+  // the preview to the first-mounted version made every edit look like it did
+  // nothing (the new, fixed version shipped but was never displayed). We key on
+  // currentPlayUrl *changing* to a new version; history preview moves
+  // mountedPlayUrl instead, so browsing old versions is unaffected and still
+  // gets the "back to latest" stale chip below.
+  const lastSeenPlayUrl = useRef<string | null>(currentPlayUrl);
+  useEffect(() => {
+    if (currentPlayUrl === null || currentPlayUrl === lastSeenPlayUrl.current) return;
+    lastSeenPlayUrl.current = currentPlayUrl;
+    setMountedPlayUrl(currentPlayUrl);
+  }, [currentPlayUrl, setMountedPlayUrl]);
+
   // One-time boot toast per job.
   useEffect(() => {
     if (state.phase !== "booting" || bootJobId === null) return;

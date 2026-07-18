@@ -387,9 +387,10 @@ class RunGenerationUseCase:
             logger.warning("could not persist draft for job %s", job_id)
 
     async def _write_cover(self, accumulated: GenerationState) -> str | None:
-        """Best-effort cover next to the stored bundle: cover.png (a copy of
-        the painted bg.png) or a procedural cover.svg. Never blocks or fails
-        the publish — any error just means no cover."""
+        """Best-effort cover next to the stored bundle: the painted feed-card
+        poster (cover.png), else a copy of the painted bg.png, else a
+        procedural cover.svg. Never blocks or fails the publish — any error
+        just means no cover."""
         if self._storage is None:
             return None
         bundle = accumulated.get("bundle_files")
@@ -398,7 +399,9 @@ class RunGenerationUseCase:
         if not bundle or not prefix or blueprint is None:
             return None
         try:
-            return await write_cover(self._storage, prefix, bundle, blueprint)
+            return await write_cover(
+                self._storage, prefix, bundle, blueprint, accumulated.get("cover_art")
+            )
         except Exception:  # noqa: BLE001 — covers are cosmetic by contract
             logger.warning("could not write cover for %s", accumulated.get("game_id"))
             return None

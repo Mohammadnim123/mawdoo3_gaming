@@ -21,7 +21,9 @@ from generation_service.infrastructure.packaging.cover import (
 TWO_COLOR_STYLE = "neon look, palette bg #112233 / primary #AABBCC / accent #112233"
 
 
-def _fake_codegen_pipeline(monkeypatch, storage_dir, *, with_bg=False, style=None):
+def _fake_codegen_pipeline(
+    monkeypatch, storage_dir, *, with_bg=False, with_cover=False, style=None
+):
     """Complete every run successfully through the codegen/package/store node
     sequence, writing a tiny real bundle to the driver-chosen target prefix."""
     from generation_service.infrastructure.ai.pipeline import GenerationPipeline
@@ -34,6 +36,8 @@ def _fake_codegen_pipeline(monkeypatch, storage_dir, *, with_bg=False, style=Non
         prefix = state["target_prefix"]
         code = GeneratedGameCode(game_js=f"// build {marker}\n", game_css=".x{}\n")
         yield ("blueprint", {"blueprint": blueprint})
+        if with_cover:
+            yield ("paint_background", {"cover_art": b"\x89PNG-fake-poster"})
         yield ("generate_code", {"code": code, "code_attempts": 1})
         bundle = {
             "index.html": f"<!doctype html><title>{marker}</title>".encode(),
@@ -205,6 +209,22 @@ def test_cover_png_written_from_bg_and_in_done_event(tmp_path, monkeypatch):
         assert listed["cover_url"] == game["cover_url"]
 
 
+def test_cover_png_is_the_painted_poster_over_the_backdrop(tmp_path, monkeypatch):
+    """The dedicated feed-card poster (cover_art) is the top rung: it wins even
+    when a bg.png backdrop is also present."""
+    _fake_codegen_pipeline(monkeypatch, tmp_path / "storage", with_bg=True, with_cover=True)
+    with boot_client(tmp_path, monkeypatch, CDN_BASE_URL="") as client:
+        game_id, job_id = _create_game(client)
+
+        cover = client.get(f"/g/{game_id}/v1/cover.png")
+        assert cover.status_code == 200
+        # The poster, not the backdrop copy.
+        assert cover.content == b"\x89PNG-fake-poster"
+
+        game = client.get(f"/api/v1/games/{game_id}").json()
+        assert game["cover_url"].endswith(f"/g/{game_id}/v1/cover.png")
+
+
 def test_cover_svg_fallback_uses_blueprint_palette(tmp_path, monkeypatch):
     _fake_codegen_pipeline(monkeypatch, tmp_path / "storage", style=TWO_COLOR_STYLE)
     with boot_client(tmp_path, monkeypatch, CDN_BASE_URL="") as client:
@@ -229,7 +249,7 @@ def test_cover_failure_never_fails_the_job(tmp_path, monkeypatch):
     null cover_url."""
     import generation_service.application.use_cases.run_generation as rg
 
-    async def exploding_write_cover(storage, prefix, bundle_files, blueprint):
+    async def exploding_write_cover(storage, prefix, bundle_files, blueprint, cover_art=None):
         raise RuntimeError("disk full")
 
     monkeypatch.setattr(rg, "write_cover", exploding_write_cover)
@@ -250,3 +270,38 @@ def test_derive_cover_colors_and_svg_escaping():
     assert derive_cover_colors(two) == ("#112233", "#AABBCC")
     svg = make_cover_svg('<Snake> & "Co"', "#112233", "#AABBCC")
     assert "&lt;Snake&gt;" in svg and "&amp;" in svg and "<Snake>" not in svg
+
+
+def test_cover_prompt_bakes_title_hero_and_palette():
+    from generation_service.domain.blueprint import LocalizedText, SpriteBrief
+    from generation_service.infrastructure.art import build_cover_prompt, cover_title
+
+    bp = build_sample_blueprint().model_copy(
+        update={
+            "title": LocalizedText(en="Flick to Glory", ar="ركلة النصر"),
+            "visual_style": TWO_COLOR_STYLE,
+            "background_art_prompt": "sunset football stadium, golden light",
+            "sprite_briefs": [
+                SpriteBrief(name="striker", prompt="a cartoon soccer striker mid-kick")
+            ],
+        }
+    )
+    # Latin, uppercased — Arabic script renders as broken glyphs in image models.
+    assert cover_title(bp) == "FLICK TO GLORY"
+
+    prompt = build_cover_prompt(bp)
+    assert 'reading "FLICK TO GLORY"' in prompt  # title lettered INTO the art
+    assert "a cartoon soccer striker mid-kick" in prompt  # the hero is the subject
+    assert "sunset football stadium" in prompt  # the game's own scene
+    assert "#112233" in prompt and "#AABBCC" in prompt  # the game's own palette
+    assert "no watermark" in prompt  # junk stays out — but the title does not
+
+
+def test_cover_title_prefers_english_then_falls_back():
+    from generation_service.domain.blueprint import LocalizedText
+    from generation_service.infrastructure.art import cover_title
+
+    ar_only = build_sample_blueprint().model_copy(
+        update={"title": LocalizedText(en="", ar="لعبة"), "default_locale": "ar"}
+    )
+    assert cover_title(ar_only) == "لعبة"  # no English → the Arabic title, still lettered

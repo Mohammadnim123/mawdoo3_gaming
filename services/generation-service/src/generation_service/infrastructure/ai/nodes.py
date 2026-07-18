@@ -38,12 +38,17 @@ from generation_service.infrastructure.ai.prompts import (
 )
 from generation_service.infrastructure.ai.schemas import PromptAnalysis, ReviewVerdict
 from generation_service.infrastructure.ai.state import GenerationState
-from generation_service.infrastructure.art import ChromaCutout, GeminiArtClient
+from generation_service.infrastructure.art import (
+    ChromaCutout,
+    GeminiArtClient,
+    build_cover_prompt,
+)
 from generation_service.infrastructure.packaging.assembler import (
     OPTIONAL_ART_FILE,
     TemplateAssembler,
     sprite_file_name,
 )
+from generation_service.infrastructure.packaging.cover import COVER_PNG
 from generation_service.infrastructure.storage import store_bundle
 from generation_service.infrastructure.validation.gate import QualityGate
 
@@ -69,6 +74,8 @@ class GenerationNodes:
         storage: StoragePort,
         llm_log: LlmCallLog,
         art: GeminiArtClient | None = None,
+        background_enabled: bool = True,
+        cover_enabled: bool = True,
     ) -> None:
         self._understanding_llm = understanding_llm
         self._blueprint_llm = blueprint_llm
@@ -78,6 +85,10 @@ class GenerationNodes:
         self._storage = storage
         self._llm_log = llm_log
         self._art = art
+        # Two independent quality levers riding one image client: the painted
+        # in-game backdrop (bg.png + sprites) and the feed-card poster.
+        self._background_enabled = background_enabled
+        self._cover_enabled = cover_enabled
         self._cutout = ChromaCutout()
 
     # ------------------------------------------------------------------ #
@@ -166,19 +177,33 @@ class GenerationNodes:
     # ------------------------------------------------------------------ #
 
     async def paint_background(self, state: GenerationState) -> dict:
-        """Paint the blueprint's world backdrop (bg.png) and hero sprites
-        (sprite_<name>.png, transparent via chroma cutout) — concurrently.
+        """Paint the game's art assets, concurrently: the in-game backdrop
+        (bg.png) + hero sprites, and the feed-card poster (cover.png).
 
         Progressive enhancement, never a blocker: any failure (no client, no
-        brief, provider error) degrades that asset away and the code prompt's
-        procedural rendering takes over. Tweaks reuse the existing art so the
-        game's look stays stable across chat edits.
+        brief, provider error) degrades that asset away — the code prompt's
+        procedural rendering covers a missing backdrop, and a missing poster
+        falls to the backdrop copy / procedural SVG in ``write_cover``. Tweaks
+        reuse the existing in-game art so the game's look stays stable across
+        chat edits.
         """
         blueprint = state["blueprint"]
         if state.get("mode") == JobKind.TWEAK:
             return await self._carry_over_art(state, blueprint)
-        if self._art is None:
-            return {"background_art": None, "sprites": {}}
+        world, cover_art = await asyncio.gather(
+            self._paint_world(state, blueprint),
+            self._paint_cover(blueprint, state["game_id"]),
+        )
+        background, sprites = world
+        return {"background_art": background, "sprites": sprites, "cover_art": cover_art}
+
+    async def _paint_world(
+        self, state: GenerationState, blueprint: GameBlueprint
+    ) -> tuple[bytes | None, dict[str, bytes]]:
+        """The in-game art the generated code composites on: the world backdrop
+        (bg.png) and transparent hero sprites (sprite_<name>.png)."""
+        if self._art is None or not self._background_enabled:
+            return None, {}
 
         async def paint_bg() -> bytes | None:
             brief = (blueprint.background_art_prompt or "").strip()
@@ -216,10 +241,28 @@ class GenerationNodes:
             "yes" if background else "no",
             sorted(sprites) or "none",
         )
-        return {"background_art": background, "sprites": sprites}
+        return background, sprites
+
+    async def _paint_cover(self, blueprint: GameBlueprint, game_id: str) -> bytes | None:
+        """The feed-card poster: hero mid-action + the game's title lettered
+        into the art. Cosmetic — any failure degrades to the backdrop copy /
+        procedural SVG, and never touches the publish."""
+        if self._art is None or not self._cover_enabled:
+            return None
+        try:
+            poster = await self._art.paint_cover(build_cover_prompt(blueprint))
+            logger.info("cover poster painted for %s", game_id)
+            return poster
+        except Exception as exc:  # noqa: BLE001 — the poster is cosmetic
+            logger.warning("cover poster painting failed for %s: %s", game_id, exc)
+            return None
 
     async def _carry_over_art(self, state: GenerationState, blueprint: GameBlueprint) -> dict:
-        """Tweak mode: reuse the current version's art files unchanged."""
+        """Tweak mode: reuse the current version's in-game art files unchanged.
+
+        The poster is carried over too (a numeric tweak shouldn't reshuffle the
+        cover); only when the previous version had no poster do we paint one so
+        older games gain a cover on their next edit."""
         prefix = state.get("base_prefix") or game_storage_prefix(state["game_id"])
 
         async def fetch(rel_path: str) -> bytes | None:
@@ -235,7 +278,10 @@ class GenerationNodes:
             data = await fetch(file_name)
             if data is not None:
                 sprites[file_name] = data
-        return {"background_art": background, "sprites": sprites}
+        cover_art = await fetch(COVER_PNG)
+        if cover_art is None:
+            cover_art = await self._paint_cover(blueprint, state["game_id"])
+        return {"background_art": background, "sprites": sprites, "cover_art": cover_art}
 
     # ------------------------------------------------------------------ #
     # 3. Code generation (AI#2 — bespoke gameplay on the template contract)
@@ -251,12 +297,14 @@ class GenerationNodes:
         art_section = (BACKGROUND_ART_SECTION if state.get("background_art") else "") + (
             build_sprites_section(sorted(state.get("sprites") or {}))
         )
+        edit_goal = state["tweak_instruction"] if state.get("mode") == JobKind.TWEAK else ""
         system, user = build_code(
             self._assembler.contract_doc,
             state["blueprint"].model_dump_json(indent=2),
             previous_section,
             feedback,
             art_section,
+            edit_goal=edit_goal,
         )
         code, usage = await self._code_llm.generate(
             "code_generation", system, user, GeneratedGameCode, **_image_kwargs(state)
