@@ -13,7 +13,7 @@ dependencies = [
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "anthropic>=0.40",
-    "aiosqlite>=0.20",
+    "asyncpg>=0.29",
     "pillow>=10.0",
 ]
 

@@ -77,7 +77,7 @@ retries); the packager assembles a **self-contained static bundle** on the
 pinned template; the bundle is written through a **storage port** into a local
 folder that **mimics the S3 bucket layout** (the cloud adapter is a config
 swap); metadata (prompt, blueprint, versions, per-call LLM cost) lands in
-SQLite. The **games CDN** server exposes that folder as a dedicated static
+Postgres. The **games CDN** server exposes that folder as a dedicated static
 origin. The **web client** is a stateless Django app that runs the
 **pre-dispatch LLM validation** itself (one Anthropic-SDK call: is the request
 actually a game, and is its complexity deliverable?), talks to the service's

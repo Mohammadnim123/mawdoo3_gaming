@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import requests
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.mail import send_mail
+from django.test import TestCase, override_settings
 
 User = get_user_model()
 
@@ -118,3 +122,51 @@ class AuthIslandPageTests(TestCase):
         r = self.client.get("/auth/oauth/google/start")
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r.headers["Location"], "/login?error=oauth")
+
+
+@override_settings(
+    EMAIL_BACKEND="accounts.mailgun.MailgunEmailBackend",
+    MAILGUN_API_KEY="key-test",
+    MAILGUN_DOMAIN="mg.example.com",
+    MAILGUN_BASE_URL="https://api.eu.mailgun.net",
+    MAILGUN_FROM_EMAIL="postmaster@mg.example.com",
+)
+class MailgunBackendTests(TestCase):
+    """The Mailgun HTTP transport behind every send_mail() call."""
+
+    def test_send_posts_to_mailgun_messages_endpoint(self):
+        with patch("accounts.mailgun.requests.post") as post:
+            post.return_value.raise_for_status.return_value = None
+            sent = send_mail(
+                "Confirm your email", "Click the link",
+                "postmaster@mg.example.com", ["new@user.com"],
+            )
+
+        self.assertEqual(sent, 1)
+        post.assert_called_once()
+        url = post.call_args.args[0] if post.call_args.args else post.call_args.kwargs["url"]
+        self.assertEqual(url, "https://api.eu.mailgun.net/v3/mg.example.com/messages")
+        kwargs = post.call_args.kwargs
+        self.assertEqual(kwargs["auth"], ("api", "key-test"))
+        self.assertEqual(kwargs["data"]["to"], ["new@user.com"])
+        self.assertEqual(kwargs["data"]["subject"], "Confirm your email")
+        self.assertEqual(kwargs["data"]["text"], "Click the link")
+        self.assertEqual(kwargs["data"]["from"], "postmaster@mg.example.com")
+
+    def test_transport_error_is_swallowed_when_fail_silently(self):
+        # emails.py sends with fail_silently=True, so a signup never 500s just
+        # because Mailgun is unreachable.
+        with patch("accounts.mailgun.requests.post",
+                   side_effect=requests.ConnectionError("boom")):
+            sent = send_mail("s", "b", "from@x.com", ["to@y.com"], fail_silently=True)
+        self.assertEqual(sent, 0)
+
+    @override_settings(MAILGUN_API_KEY="", MAILGUN_DOMAIN="")
+    def test_missing_config_raises_unless_silent(self):
+        from .mailgun import MailgunEmailBackend
+
+        with self.assertRaises(ValueError):
+            MailgunEmailBackend().send_messages([object()])
+        self.assertEqual(
+            MailgunEmailBackend(fail_silently=True).send_messages([object()]), 0
+        )

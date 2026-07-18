@@ -192,12 +192,34 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "var" / "media"
 
 # --------------------------------------------------------------------------
-# Email (magic links, verification, password reset) — console backend in dev.
+# Email (magic links, verification, password reset)
 # --------------------------------------------------------------------------
+# Mailgun HTTP API (works with the EU or US region — set MAILGUN_BASE_URL to
+# https://api.eu.mailgun.net for EU). When MAILGUN_API_KEY and MAILGUN_DOMAIN
+# are set, mail is delivered for real via accounts.mailgun.MailgunEmailBackend;
+# otherwise we fall back to the console backend, which only PRINTS mail.
+MAILGUN_API_KEY = os.environ.get("MAILGUN_API_KEY", "")
+MAILGUN_DOMAIN = os.environ.get("MAILGUN_DOMAIN", "")
+MAILGUN_BASE_URL = os.environ.get("MAILGUN_BASE_URL", "https://api.mailgun.net").rstrip("/")
+MAILGUN_FROM_EMAIL = os.environ.get("MAILGUN_FROM_EMAIL", "")
+MAILGUN_TIMEOUT_SECONDS = float(os.environ.get("MAILGUN_TIMEOUT_SECONDS", "10"))
+
+_mailgun_ready = bool(MAILGUN_API_KEY and MAILGUN_DOMAIN)
+# DJANGO_EMAIL_BACKEND still wins if set explicitly (e.g. to force SMTP).
 EMAIL_BACKEND = os.environ.get(
-    "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+    "DJANGO_EMAIL_BACKEND",
+    "accounts.mailgun.MailgunEmailBackend"
+    if _mailgun_ready
+    else "django.core.mail.backends.console.EmailBackend",
 )
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Codply <noreply@codply.local>")
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", MAILGUN_FROM_EMAIL or "Codply <noreply@codply.local>"
+)
+
+# True once a real transactional mailer is wired (anything but the console
+# backend). The magic-link endpoint reads this to stop handing sign-in codes
+# back inline once mail actually delivers.
+EMAIL_DELIVERY_CONFIGURED = EMAIL_BACKEND != "django.core.mail.backends.console.EmailBackend"
 
 # When true, sign-ups skip email verification entirely: no verification email
 # is sent and new accounts are created already-verified, so users can sign in

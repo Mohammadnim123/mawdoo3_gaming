@@ -38,12 +38,12 @@ from generation_service.infrastructure.packaging.assembler import (
 )
 from generation_service.infrastructure.persistence import (
     Database,
-    SqliteGameRepository,
-    SqliteGameVersionRepository,
-    SqliteJobDraftStore,
-    SqliteJobEventStore,
-    SqliteJobRepository,
-    SqliteLlmCallLog,
+    PostgresGameRepository,
+    PostgresGameVersionRepository,
+    PostgresJobDraftStore,
+    PostgresJobEventStore,
+    PostgresJobRepository,
+    PostgresLlmCallLog,
 )
 from generation_service.infrastructure.storage import LocalFolderStorage
 from generation_service.infrastructure.validation.gate import QualityGate
@@ -59,14 +59,18 @@ class Container:
         s = self.settings
 
         # Persistence
-        self.database = Database(s.database.sqlite_path)
+        self.database = Database(
+            s.database.dsn,
+            min_size=s.database.pool_min_size,
+            max_size=s.database.pool_max_size,
+        )
         await self.database.connect()
-        self.games = SqliteGameRepository(self.database)
-        self.jobs = SqliteJobRepository(self.database)
-        self.versions = SqliteGameVersionRepository(self.database)
-        self.llm_log = SqliteLlmCallLog(self.database)
-        self.job_events = SqliteJobEventStore(self.database)
-        self.job_drafts = SqliteJobDraftStore(self.database)
+        self.games = PostgresGameRepository(self.database)
+        self.jobs = PostgresJobRepository(self.database)
+        self.versions = PostgresGameVersionRepository(self.database)
+        self.llm_log = PostgresLlmCallLog(self.database)
+        self.job_events = PostgresJobEventStore(self.database)
+        self.job_drafts = PostgresJobDraftStore(self.database)
         # In-process pub/sub for live SSE (API + workers share this process).
         self.job_event_bus = JobEventBus()
 

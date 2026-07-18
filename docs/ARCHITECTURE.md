@@ -28,7 +28,7 @@ implementation of those decisions at MVP scale, not a reference to them.
                  │   └───────────────────────────────── END ──────────────┘   │
                  │            │                       │                       │
                  │            ▼                       ▼                       │
-                 │   SQLite (metadata, jobs,   var/storage/games/{id}/        │
+                 │   Postgres (metadata, jobs, var/storage/games/{id}/        │
                  │   blueprints, llm_calls)    (S3-mimicking bucket layout)   │
                  └───────────┬───────────────────────┬────────────────────────┘
                              │ REST (JSON,           │ same folder, served by
@@ -155,13 +155,13 @@ api ──▶ application ──▶ domain ◀── infrastructure
   `GetGeneration`, `ListGames`, `GetGame`) and the `BackgroundJobRunner`.
   Depends on ports only; fully unit-testable with fakes.
 - **infrastructure/** — adapters: the LangGraph pipeline, the quality gate,
-  the template assembler, local-folder storage, SQLite repositories, the LLM
+  the template assembler, local-folder storage, Postgres repositories, the LLM
   provider factory.
 - **api/** — FastAPI routers + response DTOs + one error envelope. DTOs are
   mapped explicitly from entities; the blueprint is never serialized out.
 - **container.py** — the composition root. Constructor injection everywhere;
-  nothing else instantiates infrastructure. Swapping SQLite→Postgres or
-  local→S3 or OpenRouter→Anthropic is a container/config change.
+  nothing else instantiates infrastructure. Swapping Postgres for another
+  store, local→S3, or OpenRouter→Anthropic is a container/config change.
 
 ### 3.2 Domain responsibilities
 
@@ -184,7 +184,7 @@ api ──▶ application ──▶ domain ◀── infrastructure
 | `infrastructure/validation/gate.py` | The blocking checks (below). Deterministic, cheap, feedback-oriented. |
 | `infrastructure/packaging/assembler.py` | Loads the pinned template once (fail-fast), assembles the five-file bundle, embeds the runtime manifest, escapes HTML/JSON. |
 | `infrastructure/storage/local.py` | `StoragePort` on a folder that mirrors the bucket layout; traversal-safe. |
-| `infrastructure/persistence/` | SQLite schema + repositories for games, jobs, and the flat LLM cost log. |
+| `infrastructure/persistence/` | Postgres schema + repositories (asyncpg pool) for games, jobs, and the flat LLM cost log. |
 | `application/job_runner.py` | Tracked asyncio tasks (the future queue/broker seam). |
 | `api/routes/play.py` | Serves bundles through the port with CSP + nosniff headers (the CDN stand-in). |
 
@@ -296,8 +296,9 @@ structurally impossible.
   clients never build storage paths. Local dev runs the `games-cdn` static
   server (:8002) over the same folder, so the dedicated games origin exists
   even in development; the service's `/g` route remains as a fallback.
-- **Metadata**: SQLite (`games`, `generation_jobs`, `llm_calls`). Repositories
-  are the Postgres seam. No shared DB with the client — API only.
+- **Metadata**: Postgres (`games`, `generation_jobs`, `llm_calls`), accessed
+  through an asyncpg pool behind the repository ports. No shared DB with the
+  client — API only.
 - Generated artifacts under `var/` are gitignored and regenerable;
   reproducibility lives in the DB row (prompt + blueprint + versions), not in
   the files.
@@ -413,7 +414,7 @@ channel is `postMessage`. The production evolution (dedicated
 | Gate style | **Deterministic static checks + `node --check`** | Cheap, zero false-positive-prone LLM judging in the blocking path; the LLM-review pass is a feature flag for later. |
 | Template/game line | **Engine owns machinery, model writes only gameplay** | Kills the lifecycle/perf defect classes by construction; keeps generated code small and reviewable. |
 | Bundles | **Self-contained static, no deps** | Reproducible; no per-game installs; competitor's dead-dep anti-pattern impossible. |
-| Metadata store | **SQLite via aiosqlite, repository pattern** | Zero-infra MVP; Postgres is a repository swap, not a redesign. |
+| Metadata store | **Postgres via asyncpg pool, repository pattern** | Production-grade concurrency behind the repository ports; the swap from the SQLite MVP was a container/config change, not a redesign. |
 | Body store | **Local folder behind StoragePort, bucket-shaped keys** | Dev = prod semantics; S3/GCS/R2 = config swap; CDN via `CDN_BASE_URL`. |
 | Jobs | **In-process asyncio + polling** | Smallest thing that works; the runner class is the broker seam (Redis env var already reserved). |
 | Client | **Django, server-rendered, stateless (no DB/sessions)** | Clean UI/engine split with the REST API as the only boundary; server-side API calls keep the browser off the engine (no CORS surface); Django's template/auth machinery is the ready seam for the platform features (accounts, feed) when they get green-lit. JS only as progressive enhancement. |
@@ -423,7 +424,7 @@ channel is `postMessage`. The production evolution (dedicated
 ### Recommended libraries (in use)
 
 Service: `fastapi`, `uvicorn`, `pydantic` v2, `pydantic-settings`,
-`anthropic`, `aiosqlite`; dev: `pytest`, `pytest-asyncio`, `httpx`, `ruff`.
+`anthropic`, `asyncpg`; dev: `pytest`, `pytest-asyncio`, `httpx`, `ruff`.
 Client: `django` + `requests` only. Games CDN: stdlib only.
 
 ---
@@ -485,7 +486,7 @@ per-variable explanations:
 
 - Service: [services/generation-service/.env.example](../services/generation-service/.env.example)
   — app/env/logging · Anthropic SDK access (OpenRouter gateway or direct) +
-  per-stage models · storage (local S3-mimic + object-store/CDN) · SQLite ·
+  per-stage models · storage (local S3-mimic + object-store/CDN) · Postgres ·
   template path · gate/retry/timeout knobs · feature flags · Redis · security
   placeholders.
 - Client: [apps/web-client/.env.example](../apps/web-client/.env.example)

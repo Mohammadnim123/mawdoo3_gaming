@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import os
 import time
+import uuid
 from pathlib import Path
+from urllib.parse import quote
 
+import asyncpg
 import pytest
 
 from generation_service.domain.blueprint import (
@@ -55,13 +61,68 @@ def build_sample_blueprint() -> GameBlueprint:
     )
 
 
+# ---------------------------------------------------------------------------
+# Postgres test isolation
+#
+# Every app-level boot and every direct-repository test runs against its own
+# throwaway database, created from a maintenance connection and dropped
+# (WITH FORCE) on teardown — the equivalent of the old per-test SQLite file.
+# Connection creds come from the same DatabaseSettings the app uses (POSTGRES_*
+# / .env); the maintenance database defaults to `postgres` (override with
+# POSTGRES_MAINTENANCE_DB if PUBLIC CONNECT there is revoked).
+# ---------------------------------------------------------------------------
+
+
+def _dsn_for(db_name: str) -> str:
+    from generation_service.config.settings import DatabaseSettings
+
+    d = DatabaseSettings()
+    user = quote(d.postgres_user, safe="")
+    auth = user if not d.postgres_password else f"{user}:{quote(d.postgres_password, safe='')}"
+    return f"postgresql://{auth}@{d.postgres_host}:{d.postgres_port}/{db_name}"
+
+
+async def _admin_exec(sql: str) -> None:
+    conn = await asyncpg.connect(_dsn_for(os.environ.get("POSTGRES_MAINTENANCE_DB", "postgres")))
+    try:
+        await conn.execute(sql)
+    finally:
+        await conn.close()
+
+
+def _create_test_db() -> str:
+    name = f"gen_test_{uuid.uuid4().hex}"
+    asyncio.run(_admin_exec(f'CREATE DATABASE "{name}"'))
+    return name
+
+
+def _drop_test_db(name: str) -> None:
+    asyncio.run(_admin_exec(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+@pytest.fixture()
+def pg_db_url():
+    """An isolated, empty Postgres database URL for direct-``Database`` tests;
+    dropped on teardown. The app schema is created by ``Database.connect()``."""
+    name = _create_test_db()
+    try:
+        yield _dsn_for(name)
+    finally:
+        _drop_test_db(name)
+
+
+@contextlib.contextmanager
 def boot_client(tmp_path, monkeypatch, **env: str):
-    """Boot the real app (lifespan + container wiring) against temp dirs.
+    """Boot the real app (lifespan + container wiring) against an isolated
+    Postgres database and temp storage dir.
 
     The single test seam for app-level tests — every suite that needs a live
     TestClient uses this, so the isolation env vars can never drift apart.
+    Used as a context manager (``with boot_client(...) as client``) so the DB
+    is dropped after the app's lifespan shutdown releases its pool.
     """
-    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "test.db"))
+    db_name = _create_test_db()
+    monkeypatch.setenv("POSTGRES_DB", db_name)
     monkeypatch.setenv("STORAGE_LOCAL_DIR", str(tmp_path / "storage"))
     monkeypatch.setenv("GATE_NODE_SYNTAX_CHECK", "false")
     # Image generation is OFF by default in tests: a real GEMINI_API_KEY in a
@@ -78,7 +139,12 @@ def boot_client(tmp_path, monkeypatch, **env: str):
     from generation_service.main import create_app
 
     get_settings.cache_clear()
-    return TestClient(create_app())
+    try:
+        with TestClient(create_app()) as client:
+            yield client
+    finally:
+        get_settings.cache_clear()
+        _drop_test_db(db_name)
 
 
 @pytest.fixture()

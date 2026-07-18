@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -120,7 +121,32 @@ class StorageSettings(_Base):
 
 
 class DatabaseSettings(_Base):
-    sqlite_path: Path = _SERVICE_ROOT / "var" / "generation.db"
+    """Postgres connection for the metadata store (game bodies live in
+    StoragePort). Mirrors the web-client's POSTGRES_* convention; a full
+    DATABASE_URL wins over the discrete parts when both are set."""
+
+    database_url: str = ""
+    postgres_db: str = "generation_service"
+    postgres_user: str = "gen_service"
+    postgres_password: str = ""
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    # asyncpg pool bounds. min=1 keeps startup cheap (grows on demand);
+    # max caps concurrent DB connections well above the pipeline concurrency.
+    pool_min_size: int = 1
+    pool_max_size: int = 10
+
+    @property
+    def dsn(self) -> str:
+        if self.database_url:
+            return self.database_url
+        user = quote(self.postgres_user, safe="")
+        auth = user
+        if self.postgres_password:
+            auth = f"{user}:{quote(self.postgres_password, safe='')}"
+        return (
+            f"postgresql://{auth}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
 
 class PipelineSettings(_Base):

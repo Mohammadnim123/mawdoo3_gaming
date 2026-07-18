@@ -1,33 +1,39 @@
-"""SQLite database wrapper.
+"""Postgres database wrapper (asyncpg + connection pool).
 
 Metadata store only — game bodies live in object storage (StoragePort).
-SQLite keeps the MVP dependency-free; the repository layer is the seam for a
-later Postgres swap.
+Repositories depend on the three helpers below (execute_write / fetch_one /
+fetch_all); the domain never sees asyncpg. Swapping the backend again is a
+container change, not a domain change.
+
+Repository SQL is written with ``?`` positional placeholders (the historic
+SQLite dialect); the wrapper rewrites them to Postgres ``$n`` placeholders so
+the repository layer stays driver-agnostic.
 """
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
+from functools import lru_cache
 
-import aiosqlite
+import asyncpg
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
-    id               TEXT PRIMARY KEY,
-    title_en         TEXT NOT NULL,
-    title_ar         TEXT NOT NULL,
-    genre            TEXT NOT NULL,
-    summary          TEXT NOT NULL DEFAULT '',
-    default_locale   TEXT NOT NULL,
-    prompt           TEXT NOT NULL,
-    blueprint_json   TEXT NOT NULL,
-    template_version TEXT NOT NULL,
-    blueprint_model  TEXT NOT NULL,
-    code_model       TEXT NOT NULL,
-    storage_prefix   TEXT NOT NULL,
-    cover_file       TEXT,
-    created_at       TEXT NOT NULL
+    id                 TEXT PRIMARY KEY,
+    title_en           TEXT NOT NULL,
+    title_ar           TEXT NOT NULL,
+    genre              TEXT NOT NULL,
+    summary            TEXT NOT NULL DEFAULT '',
+    default_locale     TEXT NOT NULL,
+    prompt             TEXT NOT NULL,
+    blueprint_json     TEXT NOT NULL,
+    template_version   TEXT NOT NULL,
+    blueprint_model    TEXT NOT NULL,
+    code_model         TEXT NOT NULL,
+    storage_prefix     TEXT NOT NULL,
+    current_version_id TEXT,
+    current_version_no INTEGER NOT NULL DEFAULT 1,
+    cover_file         TEXT,
+    created_at         TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS generation_jobs (
@@ -63,7 +69,7 @@ CREATE TABLE IF NOT EXISTS game_versions (
 );
 
 CREATE TABLE IF NOT EXISTS llm_calls (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    id            BIGSERIAL PRIMARY KEY,
     job_id        TEXT,
     stage         TEXT NOT NULL,
     model         TEXT NOT NULL,
@@ -94,8 +100,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_game_status ON generation_jobs (game_id, sta
 CREATE INDEX IF NOT EXISTS idx_game_versions_game ON game_versions (game_id, version_no);
 """
 
-# Additive, idempotent migrations for databases created before a column
-# existed: {table: {column: DDL}}. Extend this map whenever a column is added.
+# Additive, idempotent column migrations for databases created before a column
+# existed: {table: {column: DDL}}. On a fresh schema these are no-ops (every
+# column already lives in _SCHEMA); the map is the seam for future additions.
 _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
     "generation_jobs": {
         "kind": "TEXT NOT NULL DEFAULT 'create'",
@@ -118,7 +125,7 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
 _BACKFILL_V1_VERSIONS = """
 INSERT INTO game_versions (id, game_id, version_no, parent_id, job_id,
                            change_summary, storage_prefix, blueprint_json, created_at)
-SELECT lower(hex(randomblob(6))), g.id, 1, NULL, NULL,
+SELECT substr(md5(random()::text), 1, 12), g.id, 1, NULL, NULL,
        'Initial version', g.storage_prefix, g.blueprint_json, g.created_at
 FROM games g
 WHERE NOT EXISTS (SELECT 1 FROM game_versions v WHERE v.game_id = g.id)
@@ -136,57 +143,84 @@ WHERE current_version_id IS NULL
 """
 
 
+@lru_cache(maxsize=512)
+def _to_positional(sql: str) -> str:
+    """Rewrite ``?`` placeholders to Postgres ``$1, $2, ...``. Repository SQL
+    never embeds a literal ``?``, so a plain left-to-right scan is exact."""
+    out: list[str] = []
+    n = 0
+    for ch in sql:
+        if ch == "?":
+            n += 1
+            out.append(f"${n}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _rowcount(status: str) -> int:
+    """Affected-row count from an asyncpg command tag ("UPDATE 3",
+    "INSERT 0 1", "DELETE 2") — the trailing integer."""
+    try:
+        return int(status.rsplit(" ", 1)[1])
+    except (IndexError, ValueError):
+        return 0
+
+
 class Database:
-    def __init__(self, sqlite_path: Path) -> None:
-        self._path = sqlite_path
-        self._conn: aiosqlite.Connection | None = None
-        # Serializes execute+commit pairs so concurrent tasks can never commit
-        # each other's half-finished writes on the shared connection.
-        self._write_lock = asyncio.Lock()
+    def __init__(
+        self, dsn: str, *, min_size: int = 1, max_size: int = 10, command_timeout: float = 60.0
+    ) -> None:
+        self._dsn = dsn
+        self._min_size = min_size
+        self._max_size = max_size
+        self._command_timeout = command_timeout
+        self._pool: asyncpg.Pool | None = None
 
     @property
-    def connection(self) -> aiosqlite.Connection:
-        if self._conn is None:
+    def pool(self) -> asyncpg.Pool:
+        if self._pool is None:
             raise RuntimeError("Database.connect() was not called")
-        return self._conn
-
-    async def execute_write(self, sql: str, params: tuple = ()) -> int:
-        """One atomic write: execute + commit under the write lock, with a
-        rollback if anything (including cancellation) interrupts the pair.
-        Returns the affected row count."""
-        async with self._write_lock:
-            try:
-                cursor = await self.connection.execute(sql, params)
-                await self.connection.commit()
-                return cursor.rowcount
-            except BaseException:
-                await self.connection.rollback()
-                raise
+        return self._pool
 
     async def connect(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = await aiosqlite.connect(self._path)
-        self._conn.row_factory = aiosqlite.Row
-        await self._conn.execute("PRAGMA journal_mode=WAL")
-        await self._conn.execute("PRAGMA foreign_keys=ON")
-        await self._conn.executescript(_SCHEMA)
-        await self._migrate()
-        await self._conn.commit()
+        self._pool = await asyncpg.create_pool(
+            self._dsn,
+            min_size=self._min_size,
+            max_size=self._max_size,
+            command_timeout=self._command_timeout,
+        )
+        async with self._pool.acquire() as conn:
+            # asyncpg runs a multi-statement, parameterless string via the
+            # simple query protocol — the whole schema in one round trip.
+            await conn.execute(_SCHEMA)
+            await self._migrate(conn)
 
-    async def _migrate(self) -> None:
-        assert self._conn is not None
+    async def _migrate(self, conn: asyncpg.Connection) -> None:
         for table, columns in _ADDITIVE_COLUMNS.items():
-            cursor = await self._conn.execute(f"PRAGMA table_info({table})")
-            existing = {row[1] for row in await cursor.fetchall()}
             for column, ddl in columns.items():
-                if column not in existing:
-                    await self._conn.execute(
-                        f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"
-                    )
-        await self._conn.execute(_BACKFILL_V1_VERSIONS)
-        await self._conn.execute(_BACKFILL_CURRENT_POINTERS)
+                await conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}"
+                )
+        await conn.execute(_BACKFILL_V1_VERSIONS)
+        await conn.execute(_BACKFILL_CURRENT_POINTERS)
+
+    async def execute_write(self, sql: str, params: tuple = ()) -> int:
+        """One statement on a pooled connection (autocommit). Returns the
+        affected row count — the CAS signal the job repository relies on."""
+        async with self.pool.acquire() as conn:
+            status = await conn.execute(_to_positional(sql), *params)
+            return _rowcount(status)
+
+    async def fetch_one(self, sql: str, params: tuple = ()) -> asyncpg.Record | None:
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(_to_positional(sql), *params)
+
+    async def fetch_all(self, sql: str, params: tuple = ()) -> list[asyncpg.Record]:
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(_to_positional(sql), *params)
 
     async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-            self._conn = None
+        if self._pool is not None:
+            await self._pool.close()
+            self._pool = None

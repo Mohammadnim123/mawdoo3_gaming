@@ -172,17 +172,17 @@ def test_cancel_awaiting_job(tmp_path, monkeypatch):
         assert '"error_code": "cancelled"' in stream.text
 
 
-def test_awaiting_jobs_survive_restart_semantics(tmp_path, monkeypatch):
+def test_awaiting_jobs_survive_restart_semantics(pg_db_url):
     """fail_abandoned (startup sweep) must not kill a paused job."""
     import asyncio
 
     from generation_service.domain.entities import GenerationJob, JobStatus
-    from generation_service.infrastructure.persistence import Database, SqliteJobRepository
+    from generation_service.infrastructure.persistence import Database, PostgresJobRepository
 
     async def scenario() -> tuple[str, str]:
-        db = Database(tmp_path / "restart.db")
+        db = Database(pg_db_url)
         await db.connect()
-        jobs = SqliteJobRepository(db)
+        jobs = PostgresJobRepository(db)
         paused = GenerationJob.create(prompt="paused prompt", requested_locale=None)
         running = GenerationJob.create(prompt="running prompt", requested_locale=None)
         await jobs.add(paused)

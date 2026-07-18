@@ -1,10 +1,14 @@
-.PHONY: setup setup-service setup-web dev-service dev-web dev-cdn build-web migrate-web test test-service test-web lint demo consistency
+.PHONY: setup setup-service setup-web provision-service-db dev-service dev-web dev-cdn build-web migrate-web test test-service test-web lint demo consistency
 
 SERVICE_DIR := services/generation-service
 WEB_DIR     := apps/web-client
 WEB_PORT    ?= 8001
 # Base URL of the generation service (tracks APP_PORT / a remote deployment).
 SERVICE_URL ?= http://localhost:8000
+# Superuser used to provision the service's Postgres role + database.
+PG_SUPERUSER ?= postgres
+PG_HOST      ?= localhost
+PG_PORT      ?= 5432
 
 setup: setup-service setup-web
 
@@ -29,6 +33,12 @@ setup-web:
 # Compile the Codply design-system CSS + React islands -> games/static/games/dist/
 build-web:
 	npm --prefix $(WEB_DIR)/frontend run build
+
+# One-time: create the gen_service role + generation_service database.
+# Runs as a superuser (prompts for that password); edit the password in
+# scripts/provision_db.sql to match POSTGRES_PASSWORD in the service .env.
+provision-service-db:
+	psql -h $(PG_HOST) -p $(PG_PORT) -U $(PG_SUPERUSER) -f $(SERVICE_DIR)/scripts/provision_db.sql
 
 migrate-web:
 	cd $(WEB_DIR) && .venv/bin/python manage.py migrate

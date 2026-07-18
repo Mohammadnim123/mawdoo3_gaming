@@ -1,4 +1,4 @@
-"""SQLite implementations of the repository ports."""
+"""Postgres implementations of the repository ports."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat()
 
 
-class SqliteGameRepository:
+class PostgresGameRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
@@ -88,17 +88,14 @@ class SqliteGameRepository:
         )
 
     async def get(self, game_id: str) -> Game | None:
-        cursor = await self._db.connection.execute(
-            "SELECT * FROM games WHERE id = ?", (game_id,)
-        )
-        row = await cursor.fetchone()
+        row = await self._db.fetch_one("SELECT * FROM games WHERE id = ?", (game_id,))
         return self._to_entity(row) if row else None
 
     async def list_games(self, limit: int, offset: int) -> list[GameSummary]:
         # Listing projection: the multi-KB blueprint_json is deliberately not
         # selected (or parsed) here — only get() pays that cost. The id
         # tiebreaker keeps pagination stable across equal timestamps.
-        cursor = await self._db.connection.execute(
+        rows = await self._db.fetch_all(
             """
             SELECT id, title_en, title_ar, genre, summary, default_locale, prompt,
                    template_version, storage_prefix, cover_file, created_at
@@ -106,7 +103,6 @@ class SqliteGameRepository:
             """,
             (limit, offset),
         )
-        rows = await cursor.fetchall()
         return [
             GameSummary(
                 id=row["id"],
@@ -125,8 +121,7 @@ class SqliteGameRepository:
         ]
 
     async def count(self) -> int:
-        cursor = await self._db.connection.execute("SELECT COUNT(*) AS n FROM games")
-        row = await cursor.fetchone()
+        row = await self._db.fetch_one("SELECT COUNT(*) AS n FROM games")
         return int(row["n"]) if row else 0
 
     @staticmethod
@@ -151,7 +146,7 @@ class SqliteGameRepository:
         )
 
 
-class SqliteGameVersionRepository:
+class PostgresGameVersionRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
@@ -177,27 +172,24 @@ class SqliteGameVersionRepository:
         )
 
     async def get(self, game_id: str, version_id: str) -> GameVersion | None:
-        cursor = await self._db.connection.execute(
+        row = await self._db.fetch_one(
             "SELECT * FROM game_versions WHERE game_id = ? AND id = ?",
             (game_id, version_id),
         )
-        row = await cursor.fetchone()
         return self._to_entity(row) if row else None
 
     async def list_for_game(self, game_id: str) -> list[GameVersion]:
-        cursor = await self._db.connection.execute(
+        rows = await self._db.fetch_all(
             "SELECT * FROM game_versions WHERE game_id = ? ORDER BY version_no",
             (game_id,),
         )
-        rows = await cursor.fetchall()
         return [self._to_entity(row) for row in rows]
 
     async def max_version_no(self, game_id: str) -> int:
-        cursor = await self._db.connection.execute(
+        row = await self._db.fetch_one(
             "SELECT COALESCE(MAX(version_no), 0) AS n FROM game_versions WHERE game_id = ?",
             (game_id,),
         )
-        row = await cursor.fetchone()
         return int(row["n"]) if row else 0
 
     @staticmethod
@@ -215,7 +207,7 @@ class SqliteGameVersionRepository:
         )
 
 
-class SqliteJobRepository:
+class PostgresJobRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
@@ -249,10 +241,9 @@ class SqliteJobRepository:
         )
 
     async def get(self, job_id: str) -> GenerationJob | None:
-        cursor = await self._db.connection.execute(
+        row = await self._db.fetch_one(
             "SELECT * FROM generation_jobs WHERE id = ?", (job_id,)
         )
-        row = await cursor.fetchone()
         return self._to_entity(row) if row else None
 
     async def set_status(self, job_id: str, status: JobStatus) -> None:
@@ -350,12 +341,12 @@ class SqliteJobRepository:
 
     async def has_active_job_for_game(self, game_id: str) -> bool:
         placeholders = ", ".join("?" for _ in JobStatus.active())
-        cursor = await self._db.connection.execute(
+        row = await self._db.fetch_one(
             f"SELECT 1 FROM generation_jobs WHERE game_id = ? AND status IN ({placeholders}) "
             "LIMIT 1",
             (game_id, *[s.value for s in JobStatus.active()]),
         )
-        return await cursor.fetchone() is not None
+        return row is not None
 
     async def expire_stale_awaiting(
         self, error_code: str, error_message: str, max_age_hours: float
@@ -433,7 +424,7 @@ class SqliteJobRepository:
         )
 
 
-class SqliteLlmCallLog:
+class PostgresLlmCallLog:
     def __init__(self, db: Database) -> None:
         self._db = db
 
@@ -456,12 +447,11 @@ class SqliteLlmCallLog:
         )
 
     async def usage_for_job(self, job_id: str) -> list[LlmUsage]:
-        cursor = await self._db.connection.execute(
+        rows = await self._db.fetch_all(
             "SELECT stage, model, input_tokens, output_tokens, total_tokens "
             "FROM llm_calls WHERE job_id = ? ORDER BY id",
             (job_id,),
         )
-        rows = await cursor.fetchall()
         return [
             LlmUsage(
                 stage=row["stage"],
@@ -474,7 +464,7 @@ class SqliteLlmCallLog:
         ]
 
 
-class SqliteJobEventStore:
+class PostgresJobEventStore:
     """Persisted, replayable job-event log backing SSE reconnection."""
 
     def __init__(self, db: Database) -> None:
@@ -482,19 +472,18 @@ class SqliteJobEventStore:
 
     async def append(self, job_id: str, event: JobEvent) -> bool:
         rows = await self._db.execute_write(
-            "INSERT OR IGNORE INTO job_events (job_id, seq, event, data_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO job_events (job_id, seq, event, data_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (job_id, seq) DO NOTHING",
             (job_id, event.seq, event.event, json.dumps(event.data), _iso(utcnow())),
         )
         return rows > 0
 
     async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]:
-        cursor = await self._db.connection.execute(
+        rows = await self._db.fetch_all(
             "SELECT seq, event, data_json FROM job_events WHERE job_id = ? AND seq > ? "
             "ORDER BY seq",
             (job_id, after_seq),
         )
-        rows = await cursor.fetchall()
         return [
             JobEvent(seq=row["seq"], event=row["event"], data=json.loads(row["data_json"]))
             for row in rows
@@ -503,15 +492,14 @@ class SqliteJobEventStore:
     async def last_seq(self, job_id: str) -> int:
         """Highest persisted seq for a job — the resume point for an emitter
         picking up after a pause (seqs must stay monotonic across the gap)."""
-        cursor = await self._db.connection.execute(
+        row = await self._db.fetch_one(
             "SELECT COALESCE(MAX(seq), 0) AS n FROM job_events WHERE job_id = ?",
             (job_id,),
         )
-        row = await cursor.fetchone()
         return int(row["n"]) if row else 0
 
 
-class SqliteJobDraftStore:
+class PostgresJobDraftStore:
     """Live draft snapshot per job (Codply JobDraft shape) — upserted as the
     pipeline writes code, read by GET /generations/{id}/draft."""
 
@@ -521,14 +509,13 @@ class SqliteJobDraftStore:
     async def save(self, job_id: str, draft: dict) -> None:
         await self._db.execute_write(
             "INSERT INTO job_drafts (job_id, draft_json, updated_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(job_id) DO UPDATE SET draft_json = excluded.draft_json, "
+            "ON CONFLICT (job_id) DO UPDATE SET draft_json = excluded.draft_json, "
             "updated_at = excluded.updated_at",
             (job_id, json.dumps(draft, ensure_ascii=False), _iso(utcnow())),
         )
 
     async def get(self, job_id: str) -> dict | None:
-        cursor = await self._db.connection.execute(
+        row = await self._db.fetch_one(
             "SELECT draft_json FROM job_drafts WHERE job_id = ?", (job_id,)
         )
-        row = await cursor.fetchone()
         return json.loads(row["draft_json"]) if row else None

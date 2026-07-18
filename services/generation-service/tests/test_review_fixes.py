@@ -57,7 +57,7 @@ def test_stream_synthesizes_terminal_for_eventless_failure(tmp_path, monkeypatch
         assert "event: failed" in stream.text  # synthesized — the log has none
 
 
-def test_execute_never_runs_a_terminal_job(tmp_path):
+def test_execute_never_runs_a_terminal_job(pg_db_url):
     """A cancel landing before the task starts must win: execute() sees the
     terminal row and returns without flipping it back to RUNNING."""
 
@@ -68,15 +68,15 @@ def test_execute_never_runs_a_terminal_job(tmp_path):
         )
         from generation_service.infrastructure.persistence import (
             Database,
-            SqliteGameRepository,
-            SqliteGameVersionRepository,
-            SqliteJobEventStore,
-            SqliteJobRepository,
+            PostgresGameRepository,
+            PostgresGameVersionRepository,
+            PostgresJobEventStore,
+            PostgresJobRepository,
         )
 
-        db = Database(tmp_path / "terminal.db")
+        db = Database(pg_db_url)
         await db.connect()
-        jobs = SqliteJobRepository(db)
+        jobs = PostgresJobRepository(db)
         job = GenerationJob.create(prompt="a jungle game", requested_locale=None)
         await jobs.add(job)
         await jobs.mark_failed(job.id, "cancelled", "cancelled by the creator")
@@ -89,13 +89,13 @@ def test_execute_never_runs_a_terminal_job(tmp_path):
         use_case = RunGenerationUseCase(
             pipeline=ExplodingPipeline(),
             jobs=jobs,
-            games=SqliteGameRepository(db),
-            versions=SqliteGameVersionRepository(db),
+            games=PostgresGameRepository(db),
+            versions=PostgresGameVersionRepository(db),
             template_version="t",
             blueprint_model="m",
             code_model="m",
             timeout_seconds=5,
-            event_store=SqliteJobEventStore(db),
+            event_store=PostgresJobEventStore(db),
             event_bus=JobEventBus(),
         )
         await use_case.execute(job)
@@ -107,19 +107,19 @@ def test_execute_never_runs_a_terminal_job(tmp_path):
     assert asyncio.run(scenario()) == "failed"
 
 
-def test_set_answers_cas_single_winner(tmp_path):
+def test_set_answers_cas_single_winner(pg_db_url):
     """Only the first answers submission moves the job on; the loser gets
     False and must not schedule a second pipeline."""
 
     async def scenario() -> tuple[bool, bool, str]:
         from generation_service.infrastructure.persistence import (
             Database,
-            SqliteJobRepository,
+            PostgresJobRepository,
         )
 
-        db = Database(tmp_path / "cas.db")
+        db = Database(pg_db_url)
         await db.connect()
-        jobs = SqliteJobRepository(db)
+        jobs = PostgresJobRepository(db)
         job = GenerationJob.create(prompt="a jungle game", requested_locale=None)
         await jobs.add(job)
         assert await jobs.mark_running(job.id)
@@ -138,7 +138,7 @@ def test_set_answers_cas_single_winner(tmp_path):
     assert answer == "opt_2"  # the loser's answers never landed
 
 
-def test_emitter_seq_collision_skips_forward(tmp_path):
+def test_emitter_seq_collision_skips_forward(pg_db_url):
     """Two emitters racing on one job must both persist their events —
     nothing silently dropped from the replay log."""
 
@@ -146,12 +146,12 @@ def test_emitter_seq_collision_skips_forward(tmp_path):
         from generation_service.application.events import JobEventBus, JobEventEmitter
         from generation_service.infrastructure.persistence import (
             Database,
-            SqliteJobEventStore,
+            PostgresJobEventStore,
         )
 
-        db = Database(tmp_path / "seq.db")
+        db = Database(pg_db_url)
         await db.connect()
-        store = SqliteJobEventStore(db)
+        store = PostgresJobEventStore(db)
         bus = JobEventBus()
         # Both emitters start from the same seq — the cancel-vs-run race.
         run_emitter = JobEventEmitter("job1", store, bus, start_seq=3)
@@ -170,19 +170,19 @@ def test_emitter_seq_collision_skips_forward(tmp_path):
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
 
 
-def test_pause_cas_loses_to_cancel(tmp_path):
+def test_pause_cas_loses_to_cancel(pg_db_url):
     """A cancel landing while intake runs must win: the pause CAS fails and
     the cancelled job never resurfaces as answerable."""
 
     async def scenario() -> tuple[bool, str]:
         from generation_service.infrastructure.persistence import (
             Database,
-            SqliteJobRepository,
+            PostgresJobRepository,
         )
 
-        db = Database(tmp_path / "pausecas.db")
+        db = Database(pg_db_url)
         await db.connect()
-        jobs = SqliteJobRepository(db)
+        jobs = PostgresJobRepository(db)
         job = GenerationJob.create(prompt="a jungle game", requested_locale=None)
         await jobs.add(job)
         assert await jobs.mark_running(job.id)
@@ -199,18 +199,18 @@ def test_pause_cas_loses_to_cancel(tmp_path):
     assert status == "failed"
 
 
-def test_expire_stale_awaiting(tmp_path):
+def test_expire_stale_awaiting(pg_db_url):
     """Old AWAITING_INPUT jobs are reaped; fresh ones are untouched."""
 
     async def scenario() -> tuple[str, str]:
         from generation_service.infrastructure.persistence import (
             Database,
-            SqliteJobRepository,
+            PostgresJobRepository,
         )
 
-        db = Database(tmp_path / "ttl.db")
+        db = Database(pg_db_url)
         await db.connect()
-        jobs = SqliteJobRepository(db)
+        jobs = PostgresJobRepository(db)
         stale = GenerationJob.create(prompt="an old paused game", requested_locale=None)
         fresh = GenerationJob.create(prompt="a new paused game", requested_locale=None)
         await jobs.add(stale)
