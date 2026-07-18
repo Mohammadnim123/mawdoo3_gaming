@@ -1,1 +1,0 @@
-import{g as t,j as r}from"./I18nProvider-Ck0up_xu.js";import{r as i}from"./catalogLabels-Drb20ymx.js";import{B as c}from"./Badge-5_Oy6ca_.js";function d({genre:a,label:n,className:o}){const e=t(a),s=i(e.icon);return r.jsx(c,{accent:e.hue,className:o,leading:r.jsx(s,{className:"size-3","aria-hidden":!0}),children:n??e.label})}export{d as G};

@@ -192,8 +192,18 @@ export function ProfileScreen({ handle }: { handle: string }): ReactElement {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <StatPill icon={UsersRound} value={profile.stats.followers} label={t.game.followers} />
-          <StatPill icon={UsersRound} value={profile.stats.following} label={t.game.followingStat} />
+          <Link
+            href={`/u/${handle}/followers`}
+            className="rounded-md underline-offset-2 transition-colors hover:text-ink hover:underline"
+          >
+            <StatPill icon={UsersRound} value={profile.stats.followers} label={t.game.followers} />
+          </Link>
+          <Link
+            href={`/u/${handle}/following`}
+            className="rounded-md underline-offset-2 transition-colors hover:text-ink hover:underline"
+          >
+            <StatPill icon={UsersRound} value={profile.stats.following} label={t.game.followingStat} />
+          </Link>
           <StatPill icon={Gamepad2} value={profile.stats.games} label={t.game.games} />
           <StatPill icon={Play} value={profile.stats.plays} label={t.game.plays} />
           <StatPill icon={Heart} value={profile.stats.likes} label={t.game.likes} />

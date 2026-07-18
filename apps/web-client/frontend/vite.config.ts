@@ -44,6 +44,7 @@ export default defineConfig({
         notifications: "src/islands/notifications.tsx",
         search: "src/islands/search.tsx",
         profile: "src/islands/profile.tsx",
+        connections: "src/islands/connections.tsx",
         auth: "src/islands/auth.tsx",
         chrome: "src/islands/chrome.tsx",
         legal: "src/islands/legal.tsx",

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+/u/{handle}/followers and /u/{handle}/following — the connections island
+(ConnectionsScreen). The handle + initial tab are the only server props; the
+screen self-fetches the profile header and both people lists. Known handles
+carry a descriptive title; unknown/banned handles still render (the screen
+shows its own EmptyState) but go noindex. These pages are personal social
+graph views, so they are noindex regardless.
+{% endcomment %}
+{% block title %}{% if profile_user %}{{ profile_user.display_name|default:profile_user.handle }} · {% if tab == "following" %}{{ t.connections_following }}{% else %}{{ t.connections_followers }}{% endif %}{% else %}@{{ handle }}{% endif %} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<script id="connections-island-props" type="application/json">{"handle": "{{ handle|escapejs }}", "tab": "{{ tab|escapejs }}"}</script>
+<div id="connections-island">
+  {# Server skeleton mirroring ConnectionsScreen's isPending state. #}
+  <div class="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5 sm:py-8" aria-hidden="true">
+    <div class="flex items-center gap-3">
+      <div class="fp-pulse size-12 rounded-full bg-surface-2"></div>
+      <div class="flex flex-col gap-2">
+        <div class="fp-pulse h-6 w-48 rounded-2xl bg-surface-2"></div>
+        <div class="fp-pulse h-4 w-24 rounded-2xl bg-surface-2"></div>
+      </div>
+    </div>
+    <div class="fp-pulse h-10 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="flex flex-col gap-1">
+      <div class="fp-pulse h-16 w-full rounded-xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-xl bg-surface-2"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/connections.js' %}"></script>
+{% endblock %}

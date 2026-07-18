@@ -19,4 +19,8 @@ urlpatterns = [
     path("me", views.me_view, name="me"),
     path("me/update", views.me_update_view, name="me_update"),
     path("u/<slug:handle>", views.profile_view, name="profile"),
+    path("u/<slug:handle>/followers", views.connections_view,
+         {"tab": "followers"}, name="followers"),
+    path("u/<slug:handle>/following", views.connections_view,
+         {"tab": "following"}, name="following"),
 ]

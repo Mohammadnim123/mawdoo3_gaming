@@ -322,6 +322,43 @@ class SocialApiTests(TestCase):
         )
         self.assertEqual(resp.status_code, 201)
 
+    def test_followers_and_following_lists_carry_viewer_state(self):
+        # fan follows owner → owner has one follower; fan follows one creator.
+        self.fan.bio = "I love games"
+        self.fan.save(update_fields=["bio"])
+        self.client.force_login(self.fan)
+        self.client.post(f"/api/v1/users/{self.owner.handle}/follow")
+
+        # owner's followers list, viewed by owner (who does NOT follow fan back).
+        self.client.force_login(self.owner)
+        followers = self.client.get(f"/api/v1/users/{self.owner.handle}/followers").json()
+        self.assertEqual(len(followers["items"]), 1)
+        row = followers["items"][0]
+        self.assertEqual(row["handle"], self.fan.handle)
+        self.assertEqual(row["bio"], "I love games")
+        self.assertIn("follower_count", row)
+        self.assertEqual(row["viewer"], {"following": False})
+
+        # fan's following list, viewed by fan → owner row is following=True.
+        self.client.force_login(self.fan)
+        following = self.client.get(f"/api/v1/users/{self.fan.handle}/following").json()
+        self.assertEqual([u["handle"] for u in following["items"]], [self.owner.handle])
+        self.assertEqual(following["items"][0]["viewer"], {"following": True})
+
+    def test_connection_lists_anonymous_have_null_viewer(self):
+        self.client.force_login(self.fan)
+        self.client.post(f"/api/v1/users/{self.owner.handle}/follow")
+        self.client.logout()
+        followers = self.client.get(f"/api/v1/users/{self.owner.handle}/followers").json()
+        self.assertEqual(followers["items"][0]["viewer"], None)
+
+    def test_connections_pages_render(self):
+        for tab in ("followers", "following"):
+            resp = self.client.get(f"/u/{self.owner.handle}/{tab}")
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "connections-island")
+            self.assertContains(resp, f'"tab": "{tab}"')
+
 
 class JobsApiTests(TestCase):
     def setUp(self):

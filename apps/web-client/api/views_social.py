@@ -20,7 +20,13 @@ from .http import (
     no_content,
     page_params,
 )
-from .serializers import comment_payload, feed_item, game_owner, profile_payload
+from .serializers import (
+    comment_payload,
+    connection_user,
+    feed_item,
+    game_owner,
+    profile_payload,
+)
 from .views_games import _public_game
 from .views_me import _locale, _viewer_state
 
@@ -240,30 +246,49 @@ def profile_games(request, handle):
     })
 
 
+def _viewer_following(request, users) -> dict:
+    """Map user-id → True for the users the viewer already follows (one query).
+    Empty for anonymous viewers — callers pass viewer_following=None then."""
+    if not request.user.is_authenticated or not users:
+        return {}
+    ids = [u.id for u in users]
+    followed = set(
+        Follow.objects.filter(follower=request.user, following_id__in=ids)
+        .values_list("following_id", flat=True)
+    )
+    return {uid: uid in followed for uid in ids}
+
+
+def _connections_page(request, users, offset, limit, has_more):
+    viewer = _viewer_following(request, users)
+    anonymous = not request.user.is_authenticated
+    return JsonResponse({
+        "items": [
+            connection_user(u, viewer_following=None if anonymous else viewer.get(u.id, False))
+            for u in users
+        ],
+        "next_cursor": str(offset + limit) if has_more else None,
+    })
+
+
 @api_view("GET")
 def followers(request, handle):
     user = _user_or_404(handle)
     offset, limit = page_params(request)
-    qs = Follow.objects.filter(following=user).select_related("follower")
+    qs = Follow.objects.filter(following=user).select_related("follower").order_by("-created_at")
     rows = list(qs[offset : offset + limit + 1])
     has_more = len(rows) > limit
-    return JsonResponse({
-        "items": [game_owner(f.follower) for f in rows[:limit]],
-        "next_cursor": str(offset + limit) if has_more else None,
-    })
+    return _connections_page(request, [f.follower for f in rows[:limit]], offset, limit, has_more)
 
 
 @api_view("GET")
 def following(request, handle):
     user = _user_or_404(handle)
     offset, limit = page_params(request)
-    qs = Follow.objects.filter(follower=user).select_related("following")
+    qs = Follow.objects.filter(follower=user).select_related("following").order_by("-created_at")
     rows = list(qs[offset : offset + limit + 1])
     has_more = len(rows) > limit
-    return JsonResponse({
-        "items": [game_owner(f.following) for f in rows[:limit]],
-        "next_cursor": str(offset + limit) if has_more else None,
-    })
+    return _connections_page(request, [f.following for f in rows[:limit]], offset, limit, has_more)
 
 
 @api_view("GET")

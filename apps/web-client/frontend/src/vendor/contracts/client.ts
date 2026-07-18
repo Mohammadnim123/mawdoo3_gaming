@@ -10,12 +10,12 @@ import {
   ClaimDailyResponseSchema,
   CommentSchema,
   CommentHistoryResponseSchema,
+  ConnectionUserSchema,
   CreateGenerateResponseSchema,
   CreatorOverviewSchema,
   CreditsResponseSchema,
   FeedItemSchema,
   GameDetailSchema,
-  GameOwnerSchema,
   GameSchema,
   JobDraftSchema,
   JobSchema,
@@ -57,9 +57,9 @@ import {
   type CreateGenerateRequest,
   type CreateGenerateResponse,
   type DevLoginRequest,
+  type ConnectionUser,
   type FeedItem,
   type FeedParams,
-  type GameOwner,
   type Notification,
   type Profile,
   type SessionResetResponse,
@@ -150,7 +150,7 @@ const assetsPage = paginated(MyAssetSchema);
 // The API wraps versions in an `{items}` envelope; unwrap to a bare array.
 const versionsList = VersionsResponseSchema;
 const commentsPage = paginated(CommentSchema);
-const ownersPage = paginated(GameOwnerSchema);
+const connectionsPage = paginated(ConnectionUserSchema);
 const notificationsPage = paginated(NotificationSchema);
 
 /**
@@ -428,8 +428,8 @@ export class ApiClient {
     handle: string,
     params?: PageParams,
     opts?: RequestOptions,
-  ): Promise<PaginatedResponse<GameOwner>> {
-    return this.json(ownersPage, {
+  ): Promise<PaginatedResponse<ConnectionUser>> {
+    return this.json(connectionsPage, {
       method: "GET",
       path: `/users/${enc(handle)}/followers`,
       query: { cursor: params?.cursor, limit: params?.limit },
@@ -441,8 +441,8 @@ export class ApiClient {
     handle: string,
     params?: PageParams,
     opts?: RequestOptions,
-  ): Promise<PaginatedResponse<GameOwner>> {
-    return this.json(ownersPage, {
+  ): Promise<PaginatedResponse<ConnectionUser>> {
+    return this.json(connectionsPage, {
       method: "GET",
       path: `/users/${enc(handle)}/following`,
       query: { cursor: params?.cursor, limit: params?.limit },

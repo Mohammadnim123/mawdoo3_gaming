@@ -1,0 +1,1 @@
+import{g as t,j as r}from"./I18nProvider-aBwV_Mu8.js";import{r as i}from"./catalogLabels-ZP5K76zW.js";import{B as c}from"./Badge-BPlbGLgX.js";function d({genre:a,label:n,className:o}){const e=t(a),s=i(e.icon);return r.jsx(c,{accent:e.hue,className:o,leading:r.jsx(s,{className:"size-3","aria-hidden":!0}),children:n??e.label})}export{d as G};

@@ -241,3 +241,18 @@ def profile_view(request, handle: str):
         "handle": handle,
         "profile_meta_description": meta_description,
     })
+
+
+@require_http_methods(["GET"])
+def connections_view(request, handle: str, tab: str = "followers"):
+    """Followers/Following shell (/u/{handle}/followers|following). The handle +
+    tab are the only server props; the ConnectionsScreen island self-fetches the
+    profile header and both people lists. Unknown/banned handles still render —
+    the screen shows its own EmptyState. These are personal social-graph views,
+    so the page is noindex (see the template)."""
+    profile_user = User.objects.filter(handle=handle, banned_at__isnull=True).first()
+    return render(request, "profile/connections.html", {
+        "profile_user": profile_user,
+        "handle": handle,
+        "tab": "following" if tab == "following" else "followers",
+    })

@@ -2,8 +2,8 @@ import type {
   Comment,
   CommentHistoryResponse,
   CommentsParams,
+  ConnectionUser,
   FeedItem,
-  GameOwner,
   Notification,
   PageParams,
   PaginatedResponse,
@@ -93,11 +93,13 @@ export class SocialService {
     return this.gateway.client.profileGames(handle, params);
   }
 
-  followers(handle: string, params?: PageParams): Promise<PaginatedResponse<GameOwner>> {
+  /** Users who follow `handle` (E-follow connections page). */
+  followers(handle: string, params?: PageParams): Promise<PaginatedResponse<ConnectionUser>> {
     return this.gateway.client.followers(handle, params);
   }
 
-  following(handle: string, params?: PageParams): Promise<PaginatedResponse<GameOwner>> {
+  /** Users `handle` follows (E-follow connections page). */
+  following(handle: string, params?: PageParams): Promise<PaginatedResponse<ConnectionUser>> {
     return this.gateway.client.following(handle, params);
   }
 

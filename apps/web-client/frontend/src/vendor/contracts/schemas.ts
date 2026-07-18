@@ -343,6 +343,15 @@ export const SuggestedCreatorSchema = GameOwnerSchema.extend({
 });
 export type SuggestedCreator = z.infer<typeof SuggestedCreatorSchema>;
 
+/** A row in a followers/following list: the creator card + bio, follower
+ * count and the viewer's own follow-state (null when anonymous). */
+export const ConnectionUserSchema = GameOwnerSchema.extend({
+  bio: z.string().nullable(),
+  follower_count: z.number().int(),
+  viewer: z.object({ following: z.boolean() }).nullable(),
+});
+export type ConnectionUser = z.infer<typeof ConnectionUserSchema>;
+
 export const SuggestedCreatorsResponseSchema = z.object({
   items: z.array(SuggestedCreatorSchema),
 });

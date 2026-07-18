@@ -47,6 +47,19 @@ def game_owner(user) -> dict[str, Any]:
     }
 
 
+def connection_user(user, *, viewer_following: bool | None) -> dict[str, Any]:
+    """A row in the followers/following lists (E-follow): the public creator
+    card plus a bio snippet, follower count and the viewer's own follow-state
+    (null for anonymous viewers) so the row's FollowButton renders without a
+    per-row profile fetch."""
+    return {
+        **game_owner(user),
+        "bio": _or_null(user.bio),
+        "follower_count": user.follower_count,
+        "viewer": {"following": viewer_following} if viewer_following is not None else None,
+    }
+
+
 def user_payload(user) -> dict[str, Any]:
     return {
         "id": str(user.id),

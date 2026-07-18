@@ -572,6 +572,28 @@ export const en = {
     libraryError: "Couldn't load this list. Try again in a moment.",
   },
 
+  connections: {
+    // The dedicated Following/Followers page (/u/{handle}/followers|following).
+    followersTitle: "{name}'s followers",
+    followingTitle: "{name} is following",
+    myFollowersTitle: "Your followers",
+    myFollowingTitle: "You're following",
+    backToProfile: "Back to profile",
+    tabs: "Follower lists",
+    tabFollowers: "Followers",
+    tabFollowing: "Following",
+    followerCount: { one: "{count} follower", other: "{count} followers" } as PluralMessage,
+    followersEmptyTitle: "No followers yet",
+    followersEmptyDescription: "When people follow {name}, they show up here.",
+    followersEmptyDescriptionSelf: "When people follow you, they show up here.",
+    followingEmptyTitle: "Not following anyone yet",
+    followingEmptyDescription: "{name} hasn't followed any creators yet.",
+    followingEmptyDescriptionSelf: "Follow creators you like and they'll show up here.",
+    discoverCreators: "Discover creators",
+    errorTitle: "Couldn't load this list",
+    errorDescription: "The list didn't come back — try again in a moment.",
+  },
+
   dashboard: {
     title: "Your creator dashboard",
     notLoggedInDescription: "Log in to see your stats, games and payouts.",

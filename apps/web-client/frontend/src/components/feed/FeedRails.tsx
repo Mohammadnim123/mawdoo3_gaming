@@ -38,6 +38,7 @@ export function LeftRail({
 }): ReactElement {
   const { t } = useI18n();
   const { data: me } = useMe();
+  const { gate } = useRequireAuth();
   const unread = useUnreadCount();
   return (
     <nav className="flex flex-col gap-1" aria-label={t.feed.feedNavigation}>
@@ -84,12 +85,22 @@ export function LeftRail({
         active={sort === "new"}
         onClick={() => onPickSort("new")}
       />
-      <RailButton
-        icon={<UsersRound className="size-5" aria-hidden />}
-        label={t.feed.following}
-        active={sort === "following"}
-        onClick={() => onPickSort("following")}
-      />
+      {/* Following is a destination — the people you follow — not a feed sort:
+          it opens the dedicated connections page (your own when signed in,
+          otherwise the login gate). */}
+      {me ? (
+        <RailLink
+          icon={<UsersRound className="size-5" aria-hidden />}
+          label={t.feed.following}
+          href={`/u/${me.handle}/following`}
+        />
+      ) : (
+        <RailButton
+          icon={<UsersRound className="size-5" aria-hidden />}
+          label={t.feed.following}
+          onClick={() => gate()}
+        />
+      )}
       <RailLink icon={<Wand2 className="size-5" aria-hidden />} label={t.feed.createAGame} href="/create" />
       <RailLink icon={<Gamepad2 className="size-5" aria-hidden />} label={t.feed.myGames} href="/me" />
       <RailLink icon={<Bookmark className="size-5" aria-hidden />} label={t.feed.saved} href="/me?tab=saves" />
