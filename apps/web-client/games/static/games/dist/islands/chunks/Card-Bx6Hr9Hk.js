@@ -1,1 +1,0 @@
-import{j as o,b as d}from"./I18nProvider-CJLfJKe0.js";function n({raised:r=!1,flush:e=!1,className:s,...a}){return o.jsx("div",{className:d("rounded-2xl border border-edge",r?"bg-surface-2":"bg-surface-1",!e&&"p-4",s),...a})}export{n as C};

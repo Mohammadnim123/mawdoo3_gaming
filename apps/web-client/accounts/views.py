@@ -3,6 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from billing.services import grant_initial
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
@@ -73,10 +74,15 @@ def login_view(request):
             else:
                 user = User.objects.create_user(email=email, password=password)
                 grant_initial(user)
-                # SIGNUP purpose: the emailed /auth/verify link is redeemed
-                # client-side by POST /api/v1/auth/verify (SIGNUP or LOGIN).
-                _, raw = LoginToken.issue(email, LoginToken.Purpose.SIGNUP, user=user)
-                send_verify_email(request, email, raw)
+                if settings.AUTH_SKIP_EMAIL_VERIFICATION:
+                    # No mailer wired: activate inline, skip the emailed link.
+                    user.email_verified = True
+                    user.save(update_fields=["email_verified"])
+                else:
+                    # SIGNUP purpose: the emailed /auth/verify link is redeemed
+                    # client-side by POST /api/v1/auth/verify (SIGNUP or LOGIN).
+                    _, raw = LoginToken.issue(email, LoginToken.Purpose.SIGNUP, user=user)
+                    send_verify_email(request, email, raw)
                 login(request, user)
                 return redirect(nxt)
         else:  # login

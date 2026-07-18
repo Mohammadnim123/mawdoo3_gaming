@@ -45,7 +45,13 @@ def _oauth_providers() -> list[str]:
 def providers(request):
     from django.http import JsonResponse
 
-    return JsonResponse({"password": True, "providers": _oauth_providers()})
+    return JsonResponse({
+        "password": True,
+        "providers": _oauth_providers(),
+        # Lets the login screen sign users straight in after signup instead of
+        # showing a "check your email" panel when no verification is required.
+        "skip_email_verification": settings.AUTH_SKIP_EMAIL_VERIFICATION,
+    })
 
 
 @api_view("POST")
@@ -65,9 +71,14 @@ def signup(request):
         from billing.services import grant_initial
 
         grant_initial(user)
-        token, raw = LoginToken.issue(email, LoginToken.Purpose.SIGNUP, user=user,
-                                      ttl_minutes=60 * 24)
-        send_verify_email(request, email, raw)
+        if settings.AUTH_SKIP_EMAIL_VERIFICATION:
+            # No mailer wired: activate the account inline, no email, no link.
+            user.email_verified = True
+            user.save(update_fields=["email_verified"])
+        else:
+            token, raw = LoginToken.issue(email, LoginToken.Purpose.SIGNUP, user=user,
+                                          ttl_minutes=60 * 24)
+            send_verify_email(request, email, raw)
     return JsonResponse({"status": "sent"})
 
 

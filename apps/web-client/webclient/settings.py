@@ -199,6 +199,12 @@ EMAIL_BACKEND = os.environ.get(
 )
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Codply <noreply@codply.local>")
 
+# When true, sign-ups skip email verification entirely: no verification email
+# is sent and new accounts are created already-verified, so users can sign in
+# immediately. Intended for deployments with no mailer wired (the console
+# EMAIL_BACKEND above only prints mail). Keep false wherever real email works.
+AUTH_SKIP_EMAIL_VERIFICATION = _env_bool("AUTH_SKIP_EMAIL_VERIFICATION", False)
+
 # --------------------------------------------------------------------------
 # Branding
 # --------------------------------------------------------------------------

@@ -115,6 +115,10 @@ export type MagicLinkVerifyRequest = z.infer<typeof MagicLinkVerifyRequestSchema
 export const AuthProvidersResponseSchema = z.object({
   password: z.boolean(),
   providers: z.array(z.string()),
+  // When true, no email verification is required — the login screen signs the
+  // user straight in after signup instead of showing a "check your email"
+  // panel. Optional so older API builds still parse (defaults to off).
+  skip_email_verification: z.boolean().optional(),
 });
 export type AuthProvidersResponse = z.infer<typeof AuthProvidersResponseSchema>;
 

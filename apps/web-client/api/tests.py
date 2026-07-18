@@ -10,7 +10,8 @@ import json
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from games.models import (
     Game,
@@ -100,6 +101,45 @@ class AuthApiTests(TestCase):
         self.assertEqual(resp.status_code, 401)
         # Same generic envelope as a wrong password (enumeration-safe).
         self.assertEqual(resp.json()["error"], "unauthorized")
+
+    def test_signup_sends_verification_email_by_default(self):
+        resp = self.client.post(
+            "/api/v1/auth/signup",
+            data=json.dumps({"email": "needsverify@example.com", "password": "longenough1"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        user = User.objects.get(email="needsverify@example.com")
+        self.assertFalse(user.email_verified)
+        self.assertEqual(len(mail.outbox), 1)
+
+    @override_settings(AUTH_SKIP_EMAIL_VERIFICATION=True)
+    def test_signup_skips_verification_when_enabled(self):
+        # Enumeration-safe shape is unchanged...
+        resp = self.client.post(
+            "/api/v1/auth/signup",
+            data=json.dumps({"email": "skip@example.com", "password": "longenough1"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"status": "sent"})
+        # ...but no email is sent and the account is active immediately.
+        self.assertEqual(len(mail.outbox), 0)
+        user = User.objects.get(email="skip@example.com")
+        self.assertTrue(user.email_verified)
+        # The password works right away, without redeeming any link.
+        login = self.client.post(
+            "/api/v1/auth/login",
+            data=json.dumps({"email": "skip@example.com", "password": "longenough1"}),
+            content_type="application/json",
+        )
+        self.assertEqual(login.status_code, 200)
+
+    def test_providers_advertises_skip_flag(self):
+        self.assertFalse(self.client.get("/api/v1/auth/providers").json()["skip_email_verification"])
+        with override_settings(AUTH_SKIP_EMAIL_VERIFICATION=True):
+            resp = self.client.get("/api/v1/auth/providers")
+            self.assertTrue(resp.json()["skip_email_verification"])
 
 
 class FeedApiTests(TestCase):

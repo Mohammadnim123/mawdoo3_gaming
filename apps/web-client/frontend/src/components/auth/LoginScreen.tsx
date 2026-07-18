@@ -79,6 +79,14 @@ export function LoginScreen(): ReactElement {
     setError(null);
     try {
       await getServices().auth.signup(email.trim(), password);
+      if (providersInfo?.skip_email_verification) {
+        // No verification required: the account is active immediately, so log
+        // straight in with the same credentials rather than dead-ending on a
+        // "check your email" panel that has no link to click.
+        const user = await getServices().auth.loginPassword(email.trim(), password);
+        await finishLogin(user, nextTarget);
+        return;
+      }
       setView("signup-sent");
     } catch (err) {
       fail(err, t.login.genericError);
