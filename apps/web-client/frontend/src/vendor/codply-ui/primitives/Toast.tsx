@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, CircleAlert, Info, X } from "lucide-react";
 import { transition } from "../tokens";
@@ -83,19 +84,22 @@ export function ToastProvider({
 
   const value = useMemo(() => ({ toast }), [toast]);
 
-  return (
-    <ToastContext.Provider value={value}>
-      {children}
-      <div
-        aria-live="polite"
-        aria-label={labels?.region ?? "Notifications"}
-        // --fp-bottom-nav (set by the app shell) lifts toasts above a fixed
-        // bottom tab bar; env() keeps them clear of the iOS home indicator.
-        style={{
-          bottom: "calc(var(--fp-bottom-nav, 0px) + env(safe-area-inset-bottom, 0px) + 1rem)",
-        }}
-        className="pointer-events-none fixed inset-x-4 z-50 flex flex-col gap-2 sm:inset-x-auto sm:end-4 sm:w-80"
-      >
+  // Portal the toast region to <body> so `position: fixed` resolves against
+  // the viewport. Islands mount inside app chrome (e.g. the top bar carries
+  // `backdrop-blur`), and a `backdrop-filter`/`transform` ancestor becomes the
+  // containing block for fixed descendants — without the portal the toast
+  // pins to that ancestor's box and lands clipped at the top of the screen.
+  const region = (
+    <div
+      aria-live="polite"
+      aria-label={labels?.region ?? "Notifications"}
+      // --fp-bottom-nav (set by the app shell) lifts toasts above a fixed
+      // bottom tab bar; env() keeps them clear of the iOS home indicator.
+      style={{
+        bottom: "calc(var(--fp-bottom-nav, 0px) + env(safe-area-inset-bottom, 0px) + 1rem)",
+      }}
+      className="pointer-events-none fixed inset-x-4 z-50 flex flex-col gap-2 sm:inset-x-auto sm:end-4 sm:w-80"
+    >
         <AnimatePresence>
           {toasts.map((t) => {
             const Meta = variantMeta[t.variant];
@@ -128,7 +132,13 @@ export function ToastProvider({
             );
           })}
         </AnimatePresence>
-      </div>
+    </div>
+  );
+
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      {typeof document !== "undefined" ? createPortal(region, document.body) : region}
     </ToastContext.Provider>
   );
 }
