@@ -25,5 +25,9 @@ services/generation-service/var/
 # OS / editor noise
 .DS_Store
 *.swp
+.vscode/
 
 codply
+
+# Local-only docs (not part of the shipped repo)
+docs/local/
