@@ -45,8 +45,8 @@ class AuthFlowTests(TestCase):
             "mode": "login", "email": "x@y.com", "password": "rightpass1",
             "next": "https://evil.example/",
         })
-        # safeNext parity: rejected targets fall back to /create.
-        self.assertEqual(r.headers["Location"], "/create")
+        # safeNext parity: rejected targets fall back to the homepage.
+        self.assertEqual(r.headers["Location"], "/")
 
     def test_me_requires_login(self):
         r = self.client.get("/me")

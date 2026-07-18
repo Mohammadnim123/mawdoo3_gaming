@@ -19,8 +19,8 @@ User = get_user_model()
 VALID_MODES = {"login", "signup", "magic"}
 
 
-def _safe_next(request, default: str = "/create") -> str:
-    """Reference parity: safeNext defaults to /create (see safeNext.ts)."""
+def _safe_next(request, default: str = "/") -> str:
+    """Reference parity: safeNext defaults to the homepage (see safeNext.ts)."""
     nxt = request.POST.get("next") or request.GET.get("next") or default
     if url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()},
                                        require_https=request.is_secure()):

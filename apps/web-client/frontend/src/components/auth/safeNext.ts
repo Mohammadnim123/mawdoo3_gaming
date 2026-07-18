@@ -10,5 +10,5 @@ export function safeNext(raw: string | null): Route {
   // Leading "/" that is NOT followed by another "/" or "\" — the second char
   // must be a real path character for the target to stay same-origin.
   if (raw && /^\/(?![/\\])/.test(raw)) return raw as Route;
-  return "/create" as Route;
+  return "/" as Route;
 }
