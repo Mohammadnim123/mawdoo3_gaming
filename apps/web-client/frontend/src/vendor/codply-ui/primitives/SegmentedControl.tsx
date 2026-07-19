@@ -84,11 +84,19 @@ export function SegmentedControl<T extends string = string>({
             onClick={() => onChange(option.value)}
             className={cn(
               // fp-hit expands the touch target to ≥44px on coarse pointers.
-              "fp-hit inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 text-sm font-medium",
+              // Border width is always present (transparent when idle) so
+              // selecting never shifts the layout by 1px.
+              "fp-hit inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-sm font-medium",
               "transition-colors duration-150 ease-out",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet",
               "disabled:pointer-events-none disabled:opacity-50",
-              selected ? "bg-surface-3 text-ink" : "text-ink-secondary hover:text-ink",
+              // Selected = a raised, bordered pill. `surface-2` lifts off the
+              // `surface-1` track in BOTH themes (in light, `surface-3` is the
+              // same white as the track — no visible selection), and the
+              // `edge-strong` border makes the active segment unmistakable.
+              selected
+                ? "border-edge-strong bg-surface-2 text-ink"
+                : "border-transparent text-ink-secondary hover:text-ink",
             )}
           >
             {Icon && <Icon className="size-4" aria-hidden />}
