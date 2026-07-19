@@ -438,18 +438,22 @@ class BillingApiTests(TestCase):
         for field in ("id", "kind", "delta", "note", "job_id", "created_at"):
             self.assertIn(field, row)
 
-    def test_subscription_and_checkout(self):
+    @override_settings(STRIPE_SECRET_KEY="", STRIPE_PRICE_PRO_MONTHLY="")
+    def test_subscription_checkout_refuses_without_payment_provider(self):
+        # Stripe isn't configured in the test env: self-serve checkout is
+        # unavailable and MUST NOT upgrade the account for free.
         sub = self.client.get("/api/v1/me/subscription").json()
         self.assertEqual(sub["plan"]["key"], "free")
+        self.assertFalse(sub["checkout_available"])
         resp = self.client.post(
             "/api/v1/me/subscription/checkout",
             data=json.dumps({"plan": "pro", "interval": "monthly"}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn("checkout=success", resp.json()["url"])
+        self.assertEqual(resp.status_code, 422)
+        self.assertFalse(resp.json()["details"]["checkout_available"])
         sub = self.client.get("/api/v1/me/subscription").json()
-        self.assertEqual(sub["plan"]["key"], "pro")
+        self.assertEqual(sub["plan"]["key"], "free")  # still free — no payment taken
 
     def test_payouts_gate(self):
         body = self.client.get("/api/v1/me/creator/payouts").json()

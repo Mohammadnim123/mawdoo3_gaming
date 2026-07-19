@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.32",
     "anthropic>=0.40",
     "pillow>=10.0",
+    "stripe>=9,<13",
 ]
 
 [project.optional-dependencies]

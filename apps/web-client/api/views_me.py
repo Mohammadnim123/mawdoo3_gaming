@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import logging
 import uuid
 from datetime import timedelta
 
@@ -16,6 +17,7 @@ from social.models import Like, Notification, Play, Save
 
 from .http import (
     CONFLICT,
+    SERVER_ERROR,
     VALIDATION_ERROR,
     ApiError,
     api_view,
@@ -33,6 +35,8 @@ from .serializers import (
     notification_payload,
     payout_payload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _locale(request) -> str:
@@ -363,6 +367,7 @@ def _subscription(user):
 
 @api_view("GET", auth=True)
 def subscription(request):
+    from billing import stripe_gateway
     from billing.models import CreditLedger
 
     sub = _subscription(request.user)
@@ -376,12 +381,13 @@ def subscription(request):
             created_at__gte=period_start,
         )
     )
-    period_total = 2000 if sub.plan == "pro" else getattr(
-        settings, "INITIAL_FREE_CREDITS_CENTS", 500
-    )
+    period_total = getattr(settings, "PRO_PLAN_CREDITS_CENTS", 2000) if sub.plan == "pro" \
+        else getattr(settings, "INITIAL_FREE_CREDITS_CENTS", 500)
+    interval = "yearly" if sub.external_price_id and \
+        sub.external_price_id == settings.STRIPE_PRICE_PRO_YEARLY else "monthly"
     return JsonResponse({
         "plan": plan,
-        "interval": "monthly",
+        "interval": interval,
         "status": sub.status,
         "period_end": period_end.isoformat(),
         "credits": {
@@ -389,35 +395,48 @@ def subscription(request):
             "used_this_period": max(0, spent),
             "period_total": period_total,
         },
-        "checkout_available": True,
+        # False when no payment provider is wired → the UI hides self-serve
+        # checkout instead of offering an upgrade that can't be paid for.
+        "checkout_available": stripe_gateway.is_enabled(),
     })
 
 
 @api_view("POST", auth=True)
 def checkout(request):
-    """Fake-provider checkout (parity with the reference dev provider):
-    activates the plan immediately and redirects back to billing."""
+    """Start a Stripe Checkout Session for the requested plan and return its
+    hosted URL. The plan is upgraded only once Stripe confirms payment via the
+    webhook — never here and never on the browser's return to ``success_url``."""
+    from billing import stripe_gateway
+
     body = json_body(request)
     plan = str(body.get("plan") or "")
+    interval = str(body.get("interval") or "monthly")
+    if interval not in ("monthly", "yearly"):
+        interval = "monthly"
     if plan == "studio":
         raise ApiError(VALIDATION_ERROR, "Studio is contact-only.",
                        details={"contact_only": True})
     if plan != "pro":
         raise ApiError(VALIDATION_ERROR, "Unknown plan.")
-    from billing.models import Subscription
-    from billing.services import grant
+    if not stripe_gateway.is_enabled():
+        raise ApiError(VALIDATION_ERROR, "Online checkout isn't available right now.",
+                       details={"checkout_available": False})
 
-    sub = _subscription(request.user)
-    sub.plan = Subscription.Plan.PRO
-    sub.status = Subscription.Status.ACTIVE
-    sub.period_start = timezone.now()
-    sub.period_end = timezone.now() + timedelta(days=30)
-    sub.save()
-    request.user.daily_gen_quota = max(request.user.daily_gen_quota, 100)
-    request.user.save(update_fields=["daily_gen_quota"])
-    grant(request.user, "grant_plan_reset", 2000, note="Pro plan credits",
-          idempotency_key=f"pro:{sub.period_start.date().isoformat()}")
-    return JsonResponse({"url": "/account/billing?checkout=success"})
+    base = settings.STRIPE_RETURN_BASE_URL.rstrip("/") if settings.STRIPE_RETURN_BASE_URL \
+        else request.build_absolute_uri("/").rstrip("/")
+    try:
+        session = stripe_gateway.create_checkout_session(
+            user=request.user, plan=plan, interval=interval,
+            success_url=f"{base}/account/billing?checkout=success",
+            cancel_url=f"{base}/account/billing?checkout=cancelled",
+        )
+    except stripe_gateway.StripeConfigError as exc:
+        raise ApiError(VALIDATION_ERROR, str(exc),
+                       details={"checkout_available": False}) from exc
+    except Exception:
+        logger.exception("stripe checkout session creation failed")
+        raise ApiError(SERVER_ERROR, "Couldn't start checkout. Please try again.") from None
+    return JsonResponse({"url": session.url})
 
 
 # ---------------------------------------------------------------------------

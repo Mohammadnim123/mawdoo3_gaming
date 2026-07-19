@@ -61,7 +61,11 @@ class Subscription(models.Model):
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE)
     period_start = models.DateTimeField(null=True, blank=True)
     period_end = models.DateTimeField(null=True, blank=True)
+    # Stripe linkage: customer, the active subscription, and its price. Set by
+    # the payment webhook; empty on Free / never-paid accounts.
     external_customer_id = models.CharField(max_length=128, blank=True)
+    external_subscription_id = models.CharField(max_length=128, blank=True)
+    external_price_id = models.CharField(max_length=128, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

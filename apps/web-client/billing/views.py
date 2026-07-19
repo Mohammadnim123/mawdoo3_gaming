@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from datetime import timedelta
+import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.shortcuts import redirect, render
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 from games.models import GameStatus
 
-from . import services
-from .models import CreditLedger, Subscription
+from . import services, stripe_gateway
+
+logger = logging.getLogger(__name__)
 
 
 def billing(request):
@@ -32,20 +32,27 @@ def claim_daily(request):
 @require_POST
 @login_required(login_url="/login")
 def checkout(request):
-    """Fake checkout (no payment adapter in dev): upgrade to Pro + grant credits."""
-    now = timezone.now()
-    sub, _ = Subscription.objects.get_or_create(user=request.user)
-    sub.plan = Subscription.Plan.PRO
-    sub.status = Subscription.Status.ACTIVE
-    sub.period_start = now
-    sub.period_end = now + timedelta(days=30)
-    sub.save()
-    services.grant(
-        request.user, CreditLedger.Kind.GRANT_PLAN_RESET, 2000,
-        note="Pro plan credits", idempotency_key=f"plan:{now.date().isoformat()}",
-    )
-    messages.success(request, "You're on Pro. Enjoy!")
-    return redirect("/account/billing?checkout=success")
+    """Non-JS fallback for the upgrade button: hand off to Stripe Checkout.
+
+    There is deliberately no free upgrade here — the plan is only activated by
+    the Stripe webhook after payment. If Stripe isn't configured, we say so
+    instead of granting Pro."""
+    if not stripe_gateway.is_enabled():
+        messages.error(request, "Online checkout isn't available yet.")
+        return redirect("/account/billing")
+    interval = request.POST.get("interval") or "monthly"
+    base = request.build_absolute_uri("/").rstrip("/")
+    try:
+        session = stripe_gateway.create_checkout_session(
+            user=request.user, plan="pro", interval=interval,
+            success_url=f"{base}/account/billing?checkout=success",
+            cancel_url=f"{base}/account/billing?checkout=cancelled",
+        )
+    except Exception:
+        logger.exception("legacy checkout: stripe session creation failed")
+        messages.error(request, "Couldn't start checkout. Please try again.")
+        return redirect("/account/billing")
+    return redirect(session.url)
 
 
 @login_required(login_url="/login")

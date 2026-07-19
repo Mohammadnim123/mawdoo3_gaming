@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from .models import CreditLedger
+from .models import CreditLedger, Subscription
 
 
 def grant(user, kind: str, amount_cents: int, *, note: str = "",
@@ -65,4 +67,73 @@ def generations_today(user) -> int:
 def can_generate(user) -> bool:
     """Daily generation quota gate (new games/remixes per day)."""
     return generations_today(user) < user.daily_gen_quota
+
+
+# ---------------------------------------------------------------------------
+# Subscription entitlement — the single source of truth for what a plan grants.
+# Called only from the Stripe webhook (payment already succeeded), never from
+# the checkout redirect.
+# ---------------------------------------------------------------------------
+
+PRO_DAILY_GEN_QUOTA = 100
+
+
+def activate_pro(user, *, subscription_id: str = "", customer_id: str = "",
+                 price_id: str = "", period_start: datetime | None = None,
+                 period_end: datetime | None = None,
+                 credits_cents: int | None = None) -> None:
+    """Upgrade ``user`` to an active Pro subscription for the paid period and
+    grant the period's credits. Idempotent per (subscription, period): a
+    replayed webhook re-affirms the plan but never double-grants credits."""
+    now = timezone.now()
+    period_start = period_start or now
+    period_end = period_end or (now + timedelta(days=30))
+
+    sub, _ = Subscription.objects.get_or_create(user=user)
+    sub.plan = Subscription.Plan.PRO
+    sub.status = Subscription.Status.ACTIVE
+    sub.period_start = period_start
+    sub.period_end = period_end
+    if customer_id:
+        sub.external_customer_id = customer_id
+    if subscription_id:
+        sub.external_subscription_id = subscription_id
+    if price_id:
+        sub.external_price_id = price_id
+    sub.save()
+
+    if user.daily_gen_quota < PRO_DAILY_GEN_QUOTA:
+        user.daily_gen_quota = PRO_DAILY_GEN_QUOTA
+        user.save(update_fields=["daily_gen_quota"])
+
+    if credits_cents is None:
+        credits_cents = getattr(settings, "PRO_PLAN_CREDITS_CENTS", 2000)
+    # Key the grant to the subscription's billing period so each renewal grants
+    # exactly once and webhook retries are no-ops.
+    period_key = int(period_start.timestamp())
+    grant(
+        user, CreditLedger.Kind.GRANT_PLAN_RESET, credits_cents,
+        note="Pro plan credits",
+        idempotency_key=f"pro:{subscription_id or 'na'}:{period_key}",
+    )
+
+
+def downgrade_to_free(user, *, status: str = Subscription.Status.CANCELLED) -> None:
+    """Drop ``user`` back to Free (subscription ended/cancelled). Leaves any
+    remaining credit balance untouched."""
+    sub, _ = Subscription.objects.get_or_create(user=user)
+    sub.plan = Subscription.Plan.FREE
+    sub.status = status
+    sub.period_end = timezone.now()
+    sub.external_subscription_id = ""
+    sub.external_price_id = ""
+    sub.save()
+
+
+def mark_past_due(user) -> None:
+    """Flag the subscription as past-due after a failed payment; Stripe keeps
+    retrying and will either recover (active) or cancel it later."""
+    sub, _ = Subscription.objects.get_or_create(user=user)
+    sub.status = Subscription.Status.PAST_DUE
+    sub.save(update_fields=["status", "updated_at"])
 

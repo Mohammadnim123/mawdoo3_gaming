@@ -265,3 +265,23 @@ GAMES_PAGE_SIZE = int(os.environ.get("GAMES_PAGE_SIZE", "24"))
 STATUS_POLL_INTERVAL_MS = int(os.environ.get("STATUS_POLL_INTERVAL_MS", "3000"))
 DEFAULT_DAILY_GEN_QUOTA = int(os.environ.get("DEFAULT_DAILY_GEN_QUOTA", "10"))
 INITIAL_FREE_CREDITS_CENTS = int(os.environ.get("INITIAL_FREE_CREDITS_CENTS", "500"))
+
+# --------------------------------------------------------------------------
+# Payments (Stripe) — self-serve Pro subscriptions.
+#
+# When STRIPE_SECRET_KEY and the Pro monthly price are set, the checkout
+# endpoint creates a real Stripe Checkout Session and the plan is upgraded
+# ONLY by the signature-verified webhook (billing/stripe_gateway.py). Leave
+# these unset to disable self-serve checkout (checkout_available=false) rather
+# than fake an upgrade — there is deliberately no "grant Pro for free" path.
+# --------------------------------------------------------------------------
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_PRO_MONTHLY = os.environ.get("STRIPE_PRICE_PRO_MONTHLY", "")
+STRIPE_PRICE_PRO_YEARLY = os.environ.get("STRIPE_PRICE_PRO_YEARLY", "")
+# Absolute origin used to build Checkout return URLs (success/cancel). Leave
+# empty to derive from the incoming request (fine for local dev / single host).
+STRIPE_RETURN_BASE_URL = os.environ.get("STRIPE_RETURN_BASE_URL", "")
+# Credits granted per Pro billing period.
+PRO_PLAN_CREDITS_CENTS = int(os.environ.get("PRO_PLAN_CREDITS_CENTS", "2000"))

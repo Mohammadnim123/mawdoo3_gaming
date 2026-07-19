@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.urls import path
 
-from . import views_auth, views_games, views_jobs, views_me, views_social
+from . import views_auth, views_billing, views_games, views_jobs, views_me, views_social
 
 urlpatterns = [
     # -- session shim (BFF parity) -------------------------------------------
@@ -46,6 +46,8 @@ urlpatterns = [
     path("api/v1/me/credits/claim-daily", views_me.claim_daily),
     path("api/v1/me/subscription", views_me.subscription),
     path("api/v1/me/subscription/checkout", views_me.checkout),
+    # -- billing (Stripe webhook; signature-verified, no session/CSRF) ----------
+    path("api/v1/billing/stripe/webhook", views_billing.stripe_webhook),
     path("api/v1/me/creator/overview", views_me.creator_overview),
     path("api/v1/me/creator/payouts", views_me.payouts),
     # -- games ------------------------------------------------------------------
