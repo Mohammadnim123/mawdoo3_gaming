@@ -11,6 +11,8 @@ dependencies = [
     "django>=5.0",
     "requests>=2.32",
     "anthropic>=0.40",
+    "pillow>=10.0",
+    "stripe>=9,<13",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +27,8 @@ packages = ["webclient", "games"]
 line-length = 100
 target-version = "py311"
 src = ["webclient", "games"]
+# Auto-generated Django migrations aren't held to hand-written style.
+extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

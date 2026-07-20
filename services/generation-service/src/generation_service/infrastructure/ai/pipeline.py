@@ -2,7 +2,8 @@
 
     CREATE: understand ──(out of scope)──▶ END
                 │
-                ▼
+                ├──(ambiguous prompt)──▶ await_input ──▶ PAUSE
+                ▼                          (answers resume at blueprint)
             blueprint ─────────┐
     TWEAK:  revise_blueprint ──┤
                                ▼
@@ -15,7 +16,13 @@
 Tweak jobs rebuild an existing game: entry skips intake (the game is already
 in scope) and revises the stored blueprint instead of designing from a
 prompt. Both paths share code generation and the gate — a tweak whose every
-attempt is unshippable (blocking failures) never overwrites the working game.
+attempt is unshippable (blocking failures) never publishes a broken version.
+
+Pause/resume: when intake surfaces clarifying questions (and the creator
+didn't opt out), the pipeline yields a terminal "await_input" update and
+ends — pausing is the driver's job (persist analysis+questions, mark the job
+awaiting_input). A resumed run re-enters with resume=True and the persisted
+analysis already in state, so intake is never re-run.
 
 The control flow is deliberately explicit Python (a loop and two branches),
 streamed stage-by-stage: `astream` yields (node_name, state_update) after
@@ -33,11 +40,16 @@ from generation_service.infrastructure.ai.state import GenerationState
 
 class GenerationPipeline:
     def __init__(
-        self, nodes: GenerationNodes, max_code_retries: int, deep_review_enabled: bool = False
+        self,
+        nodes: GenerationNodes,
+        max_code_retries: int,
+        deep_review_enabled: bool = False,
+        clarify_enabled: bool = False,
     ) -> None:
         self._nodes = nodes
         self._max_code_retries = max_code_retries
         self._deep_review_enabled = deep_review_enabled
+        self._clarify_enabled = clarify_enabled
 
     async def astream(
         self, state: GenerationState
@@ -54,10 +66,20 @@ class GenerationPipeline:
         if s.get("mode") == JobKind.TWEAK:
             yield "revise_blueprint", await run("revise_blueprint", self._nodes.revise_blueprint)
         else:
-            yield "understand", await run("understand", self._nodes.understand)
-            if s.get("failure"):
-                return  # out of scope — terminal
+            if not s.get("resume"):
+                yield "understand", await run("understand", self._nodes.understand)
+                if s.get("failure"):
+                    return  # out of scope — terminal
+                if self._clarify_enabled and not s.get("skip_clarify"):
+                    questions = s["analysis"].domain_questions()
+                    if questions:
+                        yield "await_input", {"questions": questions}
+                        return  # paused — the driver persists and waits for answers
             yield "blueprint", await run("blueprint", self._nodes.design_blueprint)
+
+        # Optional painted backdrop (create: paint from the blueprint's brief;
+        # tweak: carry the existing painting over). Never blocks the pipeline.
+        yield "paint_background", await run("paint_background", self._nodes.paint_background)
 
         # Code → gate loop with capped retries; the gate report feeds back
         # into the next attempt as actionable failure feedback. When retries

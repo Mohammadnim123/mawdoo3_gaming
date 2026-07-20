@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ t.nav_create }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+{# The create island renders the whole flow (hero title, composer, brief,   #}
+{# quota upsell — reference CreateFlow); /create keeps the normal site      #}
+{# chrome, matching AppChrome (only /studio hides it). The island reads     #}
+{# ?idea= from the URL; the props stay informational.                        #}
+{{ island_props|json_script:"create-island-props" }}
+<div id="create-island">
+  <div class="mx-auto flex min-h-[40vh] w-full max-w-2xl items-center justify-center px-4 text-sm text-ink-muted">
+    <span class="fp-shimmer">{{ t.loading }}</span>
+  </div>
+</div>
+<noscript>
+  {# Legacy no-JS fallback: the classic POST form (handler kept server-side). #}
+  <div class="mx-auto w-full max-w-2xl px-4 py-6">
+    <h1 class="fp-title-page mb-2 text-center text-ink">{{ t.hero_title }}</h1>
+    <p class="mb-6 text-center text-ink-secondary">{{ t.hero_subtitle }}</p>
+    <form method="post" action="/create" class="fp-card p-3">
+      {% csrf_token %}
+      <textarea name="prompt" rows="4" maxlength="1000" required
+                class="fp-input border-0 bg-transparent text-base"
+                placeholder="{{ t.hero_prompt_placeholder }}">{{ idea }}</textarea>
+      <div class="flex justify-end px-1 pb-1">
+        <button type="submit" class="fp-btn fp-btn-cta fp-btn-lg">{{ t.hero_cta }} →</button>
+      </div>
+    </form>
+  </div>
+</noscript>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/create.js' %}"></script>
+{% endblock %}

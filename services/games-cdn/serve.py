@@ -9,7 +9,8 @@ from this origin, so generated (untrusted) code always runs on a foreign
 origin — separate from both the UI and the generation API.
 
 Stdlib only, zero dependencies. Run:  python3 serve.py   (or: make dev-cdn)
-Config: CDN_HOST (default 0.0.0.0) · CDN_PORT (default 8002) ·
+Config: CDN_HOST (default 0.0.0.0) · CDN_PORT (default 7002, matching the
+engine's default CDN_BASE_URL) ·
 GAMES_STORAGE_DIR (default <repo>/services/generation-service/var/storage)
 """
 
@@ -41,6 +42,9 @@ class GameFileHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", _CACHE_CONTROL)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", _CSP)
+        # Bundles are public content behind unguessable URLs; the web app's
+        # Code view fetches text files cross-origin for read-only display.
+        self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
 
     def list_directory(self, path):  # noqa: ANN001 — stdlib signature
@@ -55,7 +59,7 @@ class GameFileHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     host = os.environ.get("CDN_HOST", "0.0.0.0")
-    port = int(os.environ.get("CDN_PORT", "8002"))
+    port = int(os.environ.get("CDN_PORT", "7002"))
     directory = Path(os.environ.get("GAMES_STORAGE_DIR", str(DEFAULT_DIR)))
     directory.mkdir(parents=True, exist_ok=True)
     handler = partial(GameFileHandler, directory=str(directory))

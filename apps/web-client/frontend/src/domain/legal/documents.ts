@@ -1,0 +1,663 @@
+/**
+ * Codply legal + footer content (E-legal) — the ONE bilingual source of truth
+ * for the Privacy Policy, the Terms of Service and the site footer copy.
+ *
+ * WHY THIS LIVES HERE (deliberate architecture): legal documents are VERSIONED
+ * CONTENT, not UI chrome. They carry an authored `updated` date, real prose,
+ * and a stable section structure that has to survive review cycles — so they
+ * belong in a typed content module (data-only to add a locale or a document),
+ * NOT in the global i18n string catalog. The footer copy rides along because
+ * the footer is the surface that links these documents together.
+ *
+ * ⚠️ THIS IS A STARTING-POINT TEMPLATE, NOT LEGAL ADVICE. It is written to be
+ * honest and non-misleading, but it MUST be reviewed with qualified counsel —
+ * and the governing-law jurisdiction filled in (see the `governing-law`
+ * section TODO in `termsOfService.en`) — before Codply relies on it at launch.
+ */
+
+import { DEFAULT_LOCALE, type Locale } from "@/domain/i18n";
+
+/** Django owns routing in the islands build — hrefs are plain paths. */
+type Route = string;
+
+// ---------------------------------------------------------------------------
+// Model
+// ---------------------------------------------------------------------------
+
+/** Legal documents Codply publishes. Adding one = data-only. */
+export type LegalSlug = "privacy" | "terms";
+
+export const LEGAL_SLUGS = ["privacy", "terms"] as const satisfies readonly LegalSlug[];
+
+/** Hero-icon keys — resolved to lucide components in `LegalPage` so this data
+ * module stays free of React/lucide imports (pure, tree-shakeable content). */
+export type LegalIconName = "shield" | "scroll";
+
+export interface LegalSection {
+  /** Anchor id — powers the sticky jump-nav (`#collect`, `#your-rights`, …). */
+  id: string;
+  heading: string;
+  /**
+   * Ordered blocks. A line that starts with "- " renders as a bullet; the
+   * renderer groups consecutive bullets into one list. Everything else is a
+   * paragraph. (Authoring convention, so the content stays plain data.)
+   */
+  body: string[];
+}
+
+export interface LegalDocument {
+  slug: LegalSlug;
+  icon: LegalIconName;
+  title: string;
+  tagline: string;
+  /** Authored ISO date (YYYY-MM-DD) — shown as "Last updated …". */
+  updated: string;
+  intro: string;
+  sections: LegalSection[];
+}
+
+/** Last review date for every document in this build. */
+const UPDATED = "2026-07-12";
+
+// ---------------------------------------------------------------------------
+// Privacy Policy
+// ---------------------------------------------------------------------------
+
+const privacyEn: LegalDocument = {
+  slug: "privacy",
+  icon: "shield",
+  title: "Privacy Policy",
+  tagline: "The plain-English version of what we collect and why.",
+  updated: UPDATED,
+  intro:
+    "Codply turns your words into real, playable browser games. To do that we " +
+    "handle some of your information — this page explains exactly what, why, " +
+    "and the choices you have. No jargon, no surprises. If anything here is " +
+    "unclear, just ask us.",
+  sections: [
+    {
+      id: "collect",
+      heading: "What we collect",
+      body: [
+        "We keep this to what actually runs the product:",
+        "- Account: your email address, a securely hashed password (if you use one), and — if you sign in with Google, Discord or Apple — the identifier those providers share so we can recognise you.",
+        "- Profile: your handle, display name, an avatar image you choose to upload (stored on our CDN), and an optional bio.",
+        "- Games & content: the prompts you type, the game code and AI-generated art and audio produced from them, plus captions, comments (including their edit history), likes, saves, shares and who you follow.",
+        "- Usage: basic technical data such as device and browser type, pages you visit, actions you take, and an approximate location derived from your IP address — used to keep the service working, safe and improving.",
+        "- Cookies: a session cookie and a language cookie (see “Cookies” below).",
+      ],
+    },
+    {
+      id: "how-we-use",
+      heading: "How we use it",
+      body: [
+        "We use your information to:",
+        "- Build the games you ask for and run the studio, the public feed, and remixing.",
+        "- Show your profile and public content to other people, the way you publish it.",
+        "- Keep Codply safe: moderation, spam and abuse prevention, and fraud detection.",
+        "- Send you transactional email you need — sign-in links, password resets, and important account or security notices.",
+        "- Understand what works and fix what doesn’t, so the product gets better.",
+        "- Meet legal, tax and accounting obligations.",
+        "We do not sell your personal information, and we do not use it for third-party advertising.",
+      ],
+    },
+    {
+      id: "ai",
+      heading: "AI processing of your prompts & content",
+      body: [
+        "When you generate or remix a game, your prompt and the relevant context are sent to AI model providers that build the game, and to art and audio providers that create its sprites, backgrounds and sound. Prompts are also screened by an automated moderation step to catch abuse.",
+        "These providers process this data on our behalf under contract, to deliver the feature you asked for — not to advertise to you. We do not sell your prompts or content.",
+        "Every generated game itself runs in a locked-down sandbox that makes zero network calls: a game you play can’t phone home, read your cookies, or reach the outside internet.",
+      ],
+    },
+    {
+      id: "cookies",
+      heading: "Cookies",
+      body: [
+        "We use two first-party cookies, and no more:",
+        "- A session cookie (fp_token) that keeps you signed in. It’s httpOnly, so it can’t be read by scripts in your browser.",
+        "- A locale cookie (fp_locale) that remembers whether you prefer English or Arabic.",
+        "We do not use third-party advertising or cross-site tracking cookies.",
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Who we share it with",
+      body: [
+        "We share data only with the categories of service providers (“processors”) that make Codply run, each under a contract that limits them to our instructions:",
+        "- AI model providers, for game generation.",
+        "- Image, art and audio providers, for generated assets.",
+        "- Email delivery, for transactional messages.",
+        "- OAuth identity providers, when you choose to sign in with Google, Discord or Apple.",
+        "- Hosting and CDN, to serve the app, your avatar and published games.",
+        "- Payment processing (planned), if and when paid plans and creator payouts go live.",
+        "We may also disclose information to comply with the law, protect people’s safety and our rights, or as part of a merger or sale of the business (you’ll be told first). Content you publish — your games, profile and comments — is public by design. We never sell your personal data.",
+      ],
+    },
+    {
+      id: "your-rights",
+      heading: "Your rights & choices",
+      body: [
+        "Wherever you are, you can:",
+        "- Access and get a copy (export) of your data.",
+        "- Correct information that’s wrong, from your account settings.",
+        "- Delete your account and your content.",
+        "- Object to or restrict certain processing, and withdraw consent where we relied on it.",
+        "Manage most of this in your account settings, or contact us and we’ll help. We’ll respond within the time the law requires, and we won’t charge you for exercising these rights or treat you differently for doing so.",
+      ],
+    },
+    {
+      id: "children",
+      heading: "Children",
+      body: [
+        "Codply is for people aged 13 and over — or 16 and over where local law sets a higher age for online services. We don’t knowingly collect personal information from children under those ages. If you believe a child has given us their information, contact us and we’ll delete it.",
+      ],
+    },
+    {
+      id: "retention",
+      heading: "How long we keep it",
+      body: [
+        "We keep your information for as long as your account is active. When you delete your account we delete or anonymise your personal data within a reasonable period, except where we must keep certain records longer — for example financial and payment records for tax and accounting, or logs needed to resolve disputes and prevent abuse.",
+        "Published games are immutable by design: once a version is live, that version’s files don’t change. Editing or rolling back a game creates a new version rather than altering the old one.",
+      ],
+    },
+    {
+      id: "security",
+      heading: "How we protect it",
+      body: [
+        "We protect your data with encryption in transit, hashed passwords, sandboxed game execution, and least-privilege access to our systems. No online service can promise perfect security, but we work hard to earn your trust and to respond quickly if something goes wrong.",
+      ],
+    },
+    {
+      id: "international",
+      heading: "Where your data is processed",
+      body: [
+        "Codply and our providers may process your information in countries other than your own. When we do, we rely on appropriate safeguards to protect it, consistent with this policy and applicable law.",
+      ],
+    },
+    {
+      id: "changes",
+      heading: "Changes to this policy",
+      body: [
+        "We may update this policy as Codply grows. When changes are material we’ll update the date at the top and, where appropriate, let you know in the app or by email. Continuing to use Codply after an update means you accept the revised policy.",
+      ],
+    },
+    {
+      id: "contact",
+      heading: "Contact us",
+      body: [
+        "Questions about your privacy, or want to exercise a right? Email us at privacy@codply.com and we’ll get back to you.",
+      ],
+    },
+  ],
+};
+
+const privacyAr: LegalDocument = {
+  slug: "privacy",
+  icon: "shield",
+  title: "سياسة الخصوصية",
+  tagline: "شرح واضح وبسيط لِما نجمعه ولماذا.",
+  updated: UPDATED,
+  intro:
+    "يحوّل Codply كلماتك إلى ألعاب متصفح حقيقية قابلة للّعب. ولتحقيق ذلك نتعامل " +
+    "مع بعض معلوماتك — وتشرح هذه الصفحة بالضبط ما نجمعه، ولماذا، وما الخيارات " +
+    "المتاحة لك. بلا مصطلحات معقّدة وبلا مفاجآت. وإن كان أيّ شيء هنا غير واضح، " +
+    "فقط اسألنا.",
+  sections: [
+    {
+      id: "collect",
+      heading: "ما الذي نجمعه",
+      body: [
+        "نقتصر على ما يشغّل المنتج فعلاً:",
+        "- الحساب: عنوان بريدك الإلكتروني، وكلمة مرور مُجزّأة بأمان (إن استخدمت واحدة)، وإذا سجّلت الدخول عبر Google أو Discord أو Apple فالمُعرّف الذي تشاركه هذه الجهات كي نتعرّف عليك.",
+        "- الملف الشخصي: المُعرّف (handle)، والاسم الظاهر، وصورة رمزية تختار رفعها (تُخزَّن على شبكة التوزيع CDN)، ونبذة تعريفية اختيارية.",
+        "- الألعاب والمحتوى: الأوصاف التي تكتبها، وشِفرة اللعبة والفنون والأصوات التي يولّدها الذكاء الاصطناعي منها، إضافةً إلى التعليقات (وسجلّ تعديلها) والعناوين والإعجابات والحفظ والمشاركات ومن تتابعهم.",
+        "- الاستخدام: بيانات تقنية أساسية مثل نوع الجهاز والمتصفح، والصفحات التي تزورها، والإجراءات التي تتّخذها، وموقع تقريبي مُستنتَج من عنوان IP — تُستخدم لإبقاء الخدمة تعمل وآمنة وفي تحسّن.",
+        "- ملفات تعريف الارتباط: ملف جلسة وملف لغة (انظر «ملفات تعريف الارتباط» أدناه).",
+      ],
+    },
+    {
+      id: "how-we-use",
+      heading: "كيف نستخدمها",
+      body: [
+        "نستخدم معلوماتك من أجل:",
+        "- بناء الألعاب التي تطلبها وتشغيل الاستوديو والخلاصة العامة وميزة الريمكس.",
+        "- عرض ملفك الشخصي ومحتواك العام للآخرين بالطريقة التي تنشره بها.",
+        "- إبقاء Codply آمناً: الإشراف على المحتوى، ومنع البريد المزعج وإساءة الاستخدام، وكشف الاحتيال.",
+        "- إرسال الرسائل الضرورية إليك: روابط تسجيل الدخول، وإعادة تعيين كلمة المرور، وإشعارات الحساب والأمان المهمة.",
+        "- فهم ما ينجح وإصلاح ما لا ينجح، ليتحسّن المنتج.",
+        "- الوفاء بالالتزامات القانونية والضريبية والمحاسبية.",
+        "نحن لا نبيع معلوماتك الشخصية، ولا نستخدمها في إعلانات الطرف الثالث.",
+      ],
+    },
+    {
+      id: "ai",
+      heading: "معالجة الذكاء الاصطناعي لأوصافك ومحتواك",
+      body: [
+        "عند إنشاء لعبة أو عمل ريمكس لها، يُرسَل وصفك والسياق ذو الصلة إلى مزوّدي نماذج الذكاء الاصطناعي الذين يبنون اللعبة، وإلى مزوّدي الفنون والصوت الذين يصنعون رسوماتها وخلفياتها وأصواتها. كما تُفحَص الأوصاف عبر خطوة إشراف تلقائية لرصد إساءة الاستخدام.",
+        "يعالج هؤلاء المزوّدون هذه البيانات نيابةً عنّا وبموجب عقد، لتقديم الميزة التي طلبتها — لا لعرض إعلانات عليك. ونحن لا نبيع أوصافك أو محتواك.",
+        "وكل لعبة مُولَّدة تعمل داخل بيئة معزولة محكمة لا تُجري أيّ اتصالات بالشبكة: فاللعبة التي تلعبها لا يمكنها الاتصال بالخارج ولا قراءة ملفات تعريف الارتباط ولا الوصول إلى الإنترنت.",
+      ],
+    },
+    {
+      id: "cookies",
+      heading: "ملفات تعريف الارتباط",
+      body: [
+        "نستخدم ملفَّي تعريف ارتباط من الطرف الأول فقط، لا أكثر:",
+        "- ملف جلسة (fp_token) يبقيك مسجّل الدخول. وهو httpOnly، فلا يمكن للنصوص البرمجية في متصفحك قراءته.",
+        "- ملف لغة (fp_locale) يتذكّر تفضيلك بين العربية والإنجليزية.",
+        "نحن لا نستخدم ملفات تعريف ارتباط إعلانية من طرف ثالث ولا للتتبّع عبر المواقع.",
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "مع من نشاركها",
+      body: [
+        "نشارك البيانات فقط مع فئات مزوّدي الخدمة («المعالِجين») الذين يجعلون Codply يعمل، وكلٌّ منهم بموجب عقد يحصر استخدامه في تعليماتنا:",
+        "- مزوّدو نماذج الذكاء الاصطناعي، لإنشاء الألعاب.",
+        "- مزوّدو الصور والفنون والصوت، للأصول المُولَّدة.",
+        "- خدمة توصيل البريد الإلكتروني، للرسائل الضرورية.",
+        "- مزوّدو هوية OAuth، عندما تختار تسجيل الدخول عبر Google أو Discord أو Apple.",
+        "- الاستضافة وشبكة التوزيع (CDN)، لتقديم التطبيق وصورتك الرمزية والألعاب المنشورة.",
+        "- معالجة المدفوعات (مُخطَّط لها)، عند إطلاق الخطط المدفوعة ومدفوعات صنّاع المحتوى مستقبلاً.",
+        "وقد نُفصح عن معلومات للامتثال للقانون، أو لحماية سلامة الأشخاص وحقوقنا، أو ضمن اندماج أو بيع للنشاط (سنُخبرك أولاً). أمّا ما تنشره — ألعابك وملفك الشخصي وتعليقاتك — فهو عام بحكم التصميم. ونحن لا نبيع بياناتك الشخصية أبداً.",
+      ],
+    },
+    {
+      id: "your-rights",
+      heading: "حقوقك وخياراتك",
+      body: [
+        "أينما كنت، يمكنك:",
+        "- الوصول إلى بياناتك والحصول على نسخة منها (تصدير).",
+        "- تصحيح المعلومات غير الصحيحة من إعدادات حسابك.",
+        "- حذف حسابك ومحتواك.",
+        "- الاعتراض على معالجة معيّنة أو تقييدها، وسحب الموافقة حيثما اعتمدنا عليها.",
+        "أدِر معظم ذلك من إعدادات حسابك، أو تواصل معنا وسنساعدك. سنردّ خلال المدة التي يفرضها القانون، ولن نفرض عليك رسوماً مقابل ممارسة هذه الحقوق ولن نعاملك معاملةً مختلفة بسببها.",
+      ],
+    },
+    {
+      id: "children",
+      heading: "الأطفال",
+      body: [
+        "Codply مخصّص لمن أعمارهم 13 عاماً فأكثر — أو 16 عاماً فأكثر حيث يفرض القانون المحلي سنّاً أعلى للخدمات الإلكترونية. ولا نجمع عن قصدٍ معلومات شخصية من أطفال دون هذه الأعمار. وإن كنت تعتقد أن طفلاً زوّدنا بمعلوماته، فتواصل معنا وسنحذفها.",
+      ],
+    },
+    {
+      id: "retention",
+      heading: "مدة احتفاظنا بها",
+      body: [
+        "نحتفظ بمعلوماتك ما دام حسابك نشطاً. وعند حذف حسابك نحذف بياناتك الشخصية أو نجعلها مجهولة الهوية خلال مدة معقولة، إلا حيث يلزمنا الاحتفاظ ببعض السجلات مدةً أطول — كالسجلات المالية وسجلات الدفع لأغراض الضريبة والمحاسبة، أو السجلات اللازمة لحلّ النزاعات ومنع إساءة الاستخدام.",
+        "الألعاب المنشورة غير قابلة للتغيير بحكم التصميم: فبمجرد أن يصبح إصدار مباشراً لا تتغيّر ملفاته. وتعديل لعبة أو التراجع عنها يُنشئ إصداراً جديداً بدلاً من تغيير القديم.",
+      ],
+    },
+    {
+      id: "security",
+      heading: "كيف نحميها",
+      body: [
+        "نحمي بياناتك بالتشفير أثناء النقل، وكلمات المرور المُجزّأة، وتشغيل الألعاب في بيئة معزولة، ومنح أدنى صلاحيات الوصول إلى أنظمتنا. لا يمكن لأيّ خدمة على الإنترنت أن تَعِد بأمان مثالي، لكننا نجتهد لنكسب ثقتك وللاستجابة بسرعة إن حدث خطأ.",
+      ],
+    },
+    {
+      id: "international",
+      heading: "أين تُعالَج بياناتك",
+      body: [
+        "قد يعالج Codply ومزوّدونا معلوماتك في دول غير دولتك. وعندما نفعل ذلك نعتمد على ضمانات مناسبة لحمايتها، بما يتوافق مع هذه السياسة والقانون المعمول به.",
+      ],
+    },
+    {
+      id: "changes",
+      heading: "التغييرات على هذه السياسة",
+      body: [
+        "قد نحدّث هذه السياسة مع نموّ Codply. وعند إجراء تغييرات جوهرية سنحدّث التاريخ في الأعلى، وسنُعلمك عند الاقتضاء داخل التطبيق أو عبر البريد. واستمرارك في استخدام Codply بعد التحديث يعني قبولك للسياسة المُعدّلة.",
+      ],
+    },
+    {
+      id: "contact",
+      heading: "تواصل معنا",
+      body: [
+        "لديك أسئلة عن خصوصيتك أو ترغب في ممارسة حقّ؟ راسِلنا على privacy@codply.com وسنعاود التواصل معك.",
+      ],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Terms of Service
+// ---------------------------------------------------------------------------
+
+const termsEn: LegalDocument = {
+  slug: "terms",
+  icon: "scroll",
+  title: "Terms of Service",
+  tagline: "The deal between you and Codply — be cool, make things.",
+  updated: UPDATED,
+  intro:
+    "These terms are the agreement between you and Codply. We’ve kept them " +
+    "readable, but they’re still the real rules for using the service — so " +
+    "please give them a read. By using Codply, you agree to them.",
+  sections: [
+    {
+      id: "the-gist",
+      heading: "The gist",
+      body: [
+        "Be cool, and don’t break things. You own the games and content you make. You let us host and display them, and — for anything you publish — you let other people play and remix it. Don’t post illegal or harmful stuff, don’t abuse the AI, and don’t try to break the game sandbox. That’s the whole spirit; the rest is detail.",
+      ],
+    },
+    {
+      id: "your-account",
+      heading: "Your account",
+      body: [
+        "You need to be at least 13 (or the higher age your local law requires) to use Codply. Give us accurate information, keep your login credentials safe, and take responsibility for what happens under your account. One account is for one person. We may suspend or close accounts that break these terms or put others at risk.",
+      ],
+    },
+    {
+      id: "your-content",
+      heading: "Your content & the license you give us",
+      body: [
+        "You keep ownership of what you create — your prompts, games, captions and comments (“your content”).",
+        "To run the service, you grant Codply a worldwide, non-exclusive, royalty-free license to host, store, reproduce, adapt (for formatting and technical delivery), publish and display your content. This license exists so we can actually show your work to the people you share it with.",
+        "Because Codply is built around publishing and remixing, when you publish a game you also allow other users to play it and to remix it into new games — which means creating derivative works based on it. If you remix someone else’s published game, the same applies to your remix.",
+        "You can delete or unpublish your content at any time. Some copies may persist for a while in backups or caches, and remixes other people already made from your published game remain theirs.",
+      ],
+    },
+    {
+      id: "acceptable-use",
+      heading: "Acceptable use",
+      body: [
+        "Keep Codply a good place. You agree not to:",
+        "- Post or generate content that is illegal, hateful, harassing, sexually exploitative, or that infringes someone else’s intellectual property or privacy.",
+        "- Try to make a game phone home, exfiltrate data, or otherwise break out of the game sandbox or its no-network guarantee.",
+        "- Abuse the AI — for example spamming generations, trying to produce disallowed content, probing our systems for vulnerabilities, or reverse-engineering the service.",
+        "- Cheat: manipulate leaderboards, inflate plays, likes, follows or earnings, or use bots and automated scraping.",
+        "- Upload malware, or interfere with the security or normal operation of Codply or its users.",
+        "We may remove content and take action on accounts that cross these lines.",
+      ],
+    },
+    {
+      id: "ai-content",
+      heading: "AI-generated content",
+      body: [
+        "Codply uses AI to build your games and their art and audio. AI output can be imperfect, unexpected, or resemble other works, and we can’t guarantee it’s unique or error-free. You’re responsible for reviewing what you publish and for making sure you have the right to use it. Generated content is provided “as is”.",
+      ],
+    },
+    {
+      id: "credits-payments",
+      heading: "Credits, payments & creator payouts",
+      body: [
+        "Generating and editing games consumes credits. We offer free credits and, on paid plans, additional credits and features. Credits are a limited license to use Codply’s generation features — they aren’t money, have no cash value, and (except where the law requires otherwise) aren’t refundable or transferable.",
+        "We plan to let creators earn and request real-money payouts for their work. When that launches it will be governed by a separate payout policy covering eligibility, minimum thresholds, verification, taxes and anti-fraud checks; accrual is not live yet. We may change prices, plans and credit amounts, and we’ll give notice of material changes where required.",
+      ],
+    },
+    {
+      id: "moderation",
+      heading: "Moderation & takedowns",
+      body: [
+        "To keep the platform safe and lawful, we may review, limit, remove, or take down content and games, and we may act on accounts — including suspension or termination. If you believe content infringes your intellectual property, contact us with the details and we’ll respond. Where we take action against your content or account, we’ll aim to let you know and offer a way to appeal, except where doing so isn’t possible or appropriate.",
+      ],
+    },
+    {
+      id: "disclaimers",
+      heading: "Disclaimers",
+      body: [
+        "Codply and everything on it — including AI-generated games and content — are provided “as is” and “as available”, without warranties of any kind, whether express or implied. We don’t promise the service will always be available, error-free, or fit for a particular purpose, and we don’t endorse content created by users.",
+      ],
+    },
+    {
+      id: "liability",
+      heading: "Limitation of liability",
+      body: [
+        "To the fullest extent permitted by law, Codply and its team won’t be liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, data or goodwill, arising from your use of the service. Nothing in these terms limits liability that can’t be limited by law.",
+      ],
+    },
+    {
+      id: "termination",
+      heading: "Termination",
+      body: [
+        "You can stop using Codply and delete your account at any time. We may suspend or end your access if you break these terms or create risk for others. Some parts of these terms — like content licenses for already-published-and-remixed games, disclaimers and limits of liability — survive after your account ends.",
+      ],
+    },
+    {
+      id: "changes",
+      heading: "Changes to these terms",
+      body: [
+        "We may update these terms as Codply evolves. When changes are material we’ll update the date above and let you know where appropriate. If you keep using Codply after an update, you accept the new terms.",
+      ],
+    },
+    {
+      id: "governing-law",
+      heading: "Governing law",
+      body: [
+        // TODO(legal): set the governing jurisdiction + dispute-resolution
+        // venue with counsel before launch, and replace this placeholder.
+        "These terms are governed by the laws of the jurisdiction Codply operates from, without regard to conflict-of-law rules. The specific governing law and the venue for resolving disputes will be confirmed here before launch. Where local consumer-protection law gives you stronger rights, those rights still apply.",
+      ],
+    },
+    {
+      id: "contact",
+      heading: "Contact us",
+      body: [
+        "Questions about these terms, or need to report something? Email us at legal@codply.com — we read every message.",
+      ],
+    },
+  ],
+};
+
+const termsAr: LegalDocument = {
+  slug: "terms",
+  icon: "scroll",
+  title: "شروط الخدمة",
+  tagline: "الاتفاق بينك وبين Codply — كن لطيفاً واصنع أشياء رائعة.",
+  updated: UPDATED,
+  intro:
+    "هذه الشروط هي الاتفاق بينك وبين Codply. حرصنا على أن تكون سهلة القراءة، " +
+    "لكنها تظلّ القواعد الفعلية لاستخدام الخدمة — لذا يُرجى قراءتها. وباستخدامك " +
+    "Codply فإنك توافق عليها.",
+  sections: [
+    {
+      id: "the-gist",
+      heading: "الخلاصة",
+      body: [
+        "كن لطيفاً ولا تُفسد الأشياء. أنت تملك الألعاب والمحتوى الذي تصنعه. وتسمح لنا باستضافته وعرضه، وتسمح للآخرين — في كل ما تنشره — بلعبه وعمل ريمكس له. لا تنشر محتوى غير قانوني أو ضار، ولا تُسِئ استخدام الذكاء الاصطناعي، ولا تحاول اختراق بيئة اللعبة المعزولة. هذه هي الروح كاملةً؛ والبقية تفاصيل.",
+      ],
+    },
+    {
+      id: "your-account",
+      heading: "حسابك",
+      body: [
+        "يجب أن يكون عمرك 13 عاماً على الأقل (أو السنّ الأعلى الذي يفرضه قانونك المحلي) لاستخدام Codply. زوّدنا بمعلومات دقيقة، واحفظ بيانات دخولك بأمان، وتحمّل مسؤولية ما يحدث ضمن حسابك. الحساب الواحد لشخص واحد. وقد نوقف أو نغلق الحسابات التي تخالف هذه الشروط أو تعرّض الآخرين للخطر.",
+      ],
+    },
+    {
+      id: "your-content",
+      heading: "محتواك والترخيص الذي تمنحه لنا",
+      body: [
+        "تحتفظ بملكية ما تُنشئه — أوصافك وألعابك وعناوينك وتعليقاتك («محتواك»).",
+        "ولتشغيل الخدمة، تمنح Codply ترخيصاً عالمياً غير حصري وخالياً من الإتاوات لاستضافة محتواك وتخزينه ونسخه وتكييفه (لأغراض التنسيق والتوصيل التقني) ونشره وعرضه. ووجود هذا الترخيص هو ما يتيح لنا فعلاً أن نعرض عملك لمن تشاركه معهم.",
+        "ولأن Codply مبني على النشر والريمكس، فعندما تنشر لعبة فأنت تسمح أيضاً للمستخدمين الآخرين بلعبها وعمل ريمكس لها ضمن ألعاب جديدة — أي إنشاء أعمال مشتقّة منها. وإذا عملت ريمكس للعبة منشورة لغيرك، انطبق الأمر ذاته على الريمكس الخاص بك.",
+        "يمكنك حذف محتواك أو إلغاء نشره في أيّ وقت. وقد تبقى بعض النسخ مدةً في النسخ الاحتياطية أو الذاكرة المؤقتة، وتظلّ عمليات الريمكس التي أنشأها آخرون من لعبتك المنشورة ملكاً لهم.",
+      ],
+    },
+    {
+      id: "acceptable-use",
+      heading: "الاستخدام المقبول",
+      body: [
+        "أبقِ Codply مكاناً جيداً. أنت توافق على ألّا:",
+        "- تنشر أو تولّد محتوى غير قانوني أو يحضّ على الكراهية أو يتضمّن تحرّشاً أو استغلالاً جنسياً، أو ينتهك ملكية فكرية أو خصوصية غيرك.",
+        "- تحاول جعل لعبة تتّصل بالخارج أو تُسرّب بيانات أو تخرج بأيّ شكل من بيئة اللعبة المعزولة أو من ضمان انعدام الاتصال بالشبكة.",
+        "- تُسِئ استخدام الذكاء الاصطناعي — كإغراق النظام بعمليات التوليد، أو محاولة إنتاج محتوى محظور، أو تفحّص أنظمتنا بحثاً عن ثغرات، أو الهندسة العكسية للخدمة.",
+        "- تغشّ: كالتلاعب بقوائم المتصدّرين، أو تضخيم مرات اللعب أو الإعجابات أو المتابعات أو الأرباح، أو استخدام الروبوتات والكشط الآلي.",
+        "- ترفع برمجيات خبيثة، أو تتدخّل في أمان Codply أو تشغيله الطبيعي أو في مستخدميه.",
+        "وقد نزيل المحتوى ونتّخذ إجراءات بحق الحسابات التي تتجاوز هذه الحدود.",
+      ],
+    },
+    {
+      id: "ai-content",
+      heading: "المحتوى المُولَّد بالذكاء الاصطناعي",
+      body: [
+        "يستخدم Codply الذكاء الاصطناعي لبناء ألعابك وفنونها وأصواتها. وقد تكون مخرجات الذكاء الاصطناعي ناقصة أو غير متوقّعة أو مشابهة لأعمال أخرى، ولا يمكننا ضمان أنها فريدة أو خالية من الأخطاء. أنت مسؤول عن مراجعة ما تنشره وعن التأكّد من امتلاكك الحق في استخدامه. ويُقدَّم المحتوى المُولَّد «كما هو».",
+      ],
+    },
+    {
+      id: "credits-payments",
+      heading: "الرصيد والمدفوعات ومدفوعات صنّاع المحتوى",
+      body: [
+        "يستهلك إنشاء الألعاب وتعديلها رصيداً. نوفّر رصيداً مجانياً، وفي الخطط المدفوعة رصيداً وميزات إضافية. والرصيد هو ترخيص محدود لاستخدام ميزات التوليد في Codply — فهو ليس مالاً، وليست له قيمة نقدية، و(إلا حيث يقتضي القانون خلاف ذلك) لا يُسترَدّ ولا يُحوَّل.",
+        "نعتزم تمكين صنّاع المحتوى من تحقيق أرباح وطلب صرفها نقداً مقابل أعمالهم. وعند إطلاق ذلك سيخضع لسياسة صرف منفصلة تغطّي الأهلية والحدّ الأدنى للصرف والتحقّق والضرائب وإجراءات مكافحة الاحتيال؛ وتجميع الأرباح غير مُفعَّل بعد. وقد نغيّر الأسعار والخطط ومقادير الرصيد، وسنُشعِر بالتغييرات الجوهرية حيثما لزم.",
+      ],
+    },
+    {
+      id: "moderation",
+      heading: "الإشراف وإزالة المحتوى",
+      body: [
+        "للحفاظ على سلامة المنصّة وقانونيتها، قد نراجع المحتوى والألعاب أو نُقيّدها أو نُزيلها، وقد نتّخذ إجراءات بحق الحسابات — بما في ذلك الإيقاف أو الإنهاء. وإن كنت تعتقد أن محتوى ينتهك ملكيتك الفكرية، فتواصل معنا بالتفاصيل وسنستجيب. وعند اتّخاذ إجراء بحق محتواك أو حسابك، سنسعى لإعلامك وإتاحة وسيلة للاعتراض، إلا حيث يتعذّر ذلك أو لا يكون مناسباً.",
+      ],
+    },
+    {
+      id: "disclaimers",
+      heading: "إخلاء المسؤولية",
+      body: [
+        "يُقدَّم Codply وكل ما فيه — بما في ذلك الألعاب والمحتوى المُولَّد بالذكاء الاصطناعي — «كما هو» و«حسب توفّره»، دون أيّ ضمانات صريحة أو ضمنية. ولا نَعِد بأن الخدمة ستكون متاحة دائماً أو خالية من الأخطاء أو ملائمة لغرض معيّن، ولا نتبنّى المحتوى الذي يُنشئه المستخدمون.",
+      ],
+    },
+    {
+      id: "liability",
+      heading: "حدود المسؤولية",
+      body: [
+        "إلى أقصى حدّ يسمح به القانون، لن يكون Codply وفريقه مسؤولين عن أيّ أضرار غير مباشرة أو عرضية أو خاصة أو تبعية أو تأديبية، ولا عن خسارة الأرباح أو البيانات أو السمعة الناتجة عن استخدامك للخدمة. ولا يحدّ أيّ بند في هذه الشروط من مسؤولية لا يجيز القانون الحدّ منها.",
+      ],
+    },
+    {
+      id: "termination",
+      heading: "الإنهاء",
+      body: [
+        "يمكنك التوقّف عن استخدام Codply وحذف حسابك في أيّ وقت. وقد نوقف وصولك أو نُنهيه إذا خالفت هذه الشروط أو شكّلت خطراً على الآخرين. وتبقى بعض بنود هذه الشروط سارية بعد انتهاء حسابك — كتراخيص المحتوى للألعاب التي نُشرت وأُجري لها ريمكس بالفعل، وإخلاء المسؤولية، وحدود المسؤولية.",
+      ],
+    },
+    {
+      id: "changes",
+      heading: "التغييرات على هذه الشروط",
+      body: [
+        "قد نحدّث هذه الشروط مع تطوّر Codply. وعند إجراء تغييرات جوهرية سنحدّث التاريخ أعلاه ونُعلمك حيثما لزم. وإذا واصلت استخدام Codply بعد التحديث فأنت تقبل الشروط الجديدة.",
+      ],
+    },
+    {
+      id: "governing-law",
+      heading: "القانون الحاكم",
+      body: [
+        "تخضع هذه الشروط لقوانين الولاية القضائية التي يعمل منها Codply، دون اعتبار لقواعد تنازع القوانين. وسيُؤكَّد هنا القانون الحاكم المحدّد وجهة الاختصاص لحلّ النزاعات قبل الإطلاق. وحيث تمنحك قوانين حماية المستهلك المحلية حقوقاً أقوى، تبقى تلك الحقوق سارية.",
+      ],
+    },
+    {
+      id: "contact",
+      heading: "تواصل معنا",
+      body: [
+        "لديك أسئلة عن هذه الشروط أو تريد الإبلاغ عن شيء؟ راسِلنا على legal@codply.com — نقرأ كل رسالة.",
+      ],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Registry + accessor
+// ---------------------------------------------------------------------------
+
+const DOCUMENTS: Record<LegalSlug, Record<Locale, LegalDocument>> = {
+  privacy: { en: privacyEn, ar: privacyAr },
+  terms: { en: termsEn, ar: termsAr },
+};
+
+/**
+ * The one accessor. Returns the document for `slug` in `locale`, falling back
+ * to the default locale when that locale hasn’t been authored yet — so adding
+ * a locale is data-only and never crashes a page mid-rollout.
+ */
+export function getLegalDocument(slug: LegalSlug, locale: Locale): LegalDocument {
+  const byLocale = DOCUMENTS[slug];
+  return byLocale[locale] ?? byLocale[DEFAULT_LOCALE];
+}
+
+// ---------------------------------------------------------------------------
+// Footer content (co-located — the footer is what links these docs together)
+// ---------------------------------------------------------------------------
+
+export interface FooterLink {
+  label: string;
+  href: Route;
+}
+
+export interface FooterGroup {
+  /** Icon key resolved in `Footer` (keeps this module React-free). */
+  icon: "compass" | "scale";
+  title: string;
+  links: FooterLink[];
+}
+
+export interface FooterContent {
+  /** Accessible label for the wordmark's home link. */
+  homeLabel: string;
+  /** Cute one-liner under the wordmark. */
+  tagline: string;
+  groups: FooterGroup[];
+  /** Accessible label + tooltip for the Discord icon link. */
+  discordLabel: string;
+  /** The playful sign-off beside the copyright. */
+  madeWith: string;
+  /** "© {year} Codply. {rights}" — the rights clause only. */
+  rights: string;
+}
+
+export const footerContent: Record<Locale, FooterContent> = {
+  en: {
+    homeLabel: "Codply home",
+    tagline: "Turning your words into little worlds you can play.",
+    groups: [
+      {
+        icon: "compass",
+        title: "Explore",
+        links: [
+          { label: "Feed", href: "/" },
+          { label: "Create", href: "/studio" },
+        ],
+      },
+      {
+        icon: "scale",
+        title: "Legal",
+        links: [
+          { label: "Privacy", href: "/privacy" },
+          { label: "Terms", href: "/terms" },
+        ],
+      },
+    ],
+    discordLabel: "Join us on Discord",
+    madeWith: "Made with prompts, pixels & a lot of play.",
+    rights: "All rights reserved.",
+  },
+  ar: {
+    homeLabel: "الصفحة الرئيسية لـ Codply",
+    tagline: "نحوّل كلماتك إلى عوالم صغيرة يمكنك لعبها.",
+    groups: [
+      {
+        icon: "compass",
+        title: "استكشف",
+        links: [
+          { label: "الخلاصة", href: "/" },
+          { label: "إنشاء", href: "/studio" },
+        ],
+      },
+      {
+        icon: "scale",
+        title: "قانوني",
+        links: [
+          { label: "الخصوصية", href: "/privacy" },
+          { label: "الشروط", href: "/terms" },
+        ],
+      },
+    ],
+    discordLabel: "انضمّ إلينا على Discord",
+    madeWith: "مصنوع بالأوصاف والبكسلات والكثير من اللعب.",
+    rights: "جميع الحقوق محفوظة.",
+  },
+};
+
+/** Copyright year — a compile-time literal (SSR-safe; never Date.now()). */
+export const COPYRIGHT_YEAR = 2026;

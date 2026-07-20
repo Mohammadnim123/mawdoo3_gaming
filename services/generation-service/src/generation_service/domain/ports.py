@@ -10,14 +10,17 @@ from __future__ import annotations
 from typing import Protocol
 
 from generation_service.domain.entities import (
+    ClarifyQuestion,
     Game,
     GameSummary,
+    GameVersion,
     GateReport,
     GenerationJob,
     JobStatus,
     LlmUsage,
     PipelineStage,
 )
+from generation_service.domain.events import JobEvent
 
 
 class StoragePort(Protocol):
@@ -52,9 +55,15 @@ class JobRepository(Protocol):
 
     async def set_stage(self, job_id: str, stage: PipelineStage) -> None: ...
 
+    async def mark_running(self, job_id: str) -> bool:
+        """CAS QUEUED -> RUNNING; False = the job moved on, do not run."""
+        ...
+
     async def mark_succeeded(
         self, job_id: str, game_id: str, gate_report: GateReport | None
-    ) -> None: ...
+    ) -> bool:
+        """CAS RUNNING -> SUCCEEDED; False = a terminal state won, discard."""
+        ...
 
     async def mark_failed(
         self,
@@ -64,9 +73,38 @@ class JobRepository(Protocol):
         gate_report: GateReport | None = None,
     ) -> None: ...
 
+    async def mark_awaiting_input(
+        self, job_id: str, questions: list[ClarifyQuestion], analysis_json: str
+    ) -> bool:
+        """CAS RUNNING -> AWAITING_INPUT; False = the job went terminal,
+        abandon the pause."""
+        ...
+
+    async def set_answers(self, job_id: str, answers: dict[str, str]) -> bool:
+        """CAS: persist answers + QUEUED only if still AWAITING_INPUT; False
+        means a concurrent submit/cancel won and no resume must be scheduled."""
+        ...
+
+    async def expire_stale_awaiting(
+        self, error_code: str, error_message: str, max_age_hours: float
+    ) -> int: ...
+
     async def has_active_job_for_game(self, game_id: str) -> bool: ...
 
     async def fail_abandoned(self, error_code: str, error_message: str) -> int: ...
+
+
+class GameVersionRepository(Protocol):
+    """Catalog of immutable version bundles. Rows are append-only; 'current'
+    lives on the Game (current_version_id/no + storage_prefix)."""
+
+    async def add(self, version: GameVersion) -> None: ...
+
+    async def get(self, game_id: str, version_id: str) -> GameVersion | None: ...
+
+    async def list_for_game(self, game_id: str) -> list[GameVersion]: ...
+
+    async def max_version_no(self, game_id: str) -> int: ...
 
 
 class LlmCallLog(Protocol):
@@ -75,3 +113,26 @@ class LlmCallLog(Protocol):
     async def record(self, job_id: str | None, usage: LlmUsage) -> None: ...
 
     async def usage_for_job(self, job_id: str) -> list[LlmUsage]: ...
+
+
+class JobDraftStore(Protocol):
+    """Live draft snapshot per job: the code as it is being written, available
+    while the job runs and after failures (Code view + recovery). The draft is
+    the Codply JobDraft shape: {content: str|None, files: [{path, content}]}."""
+
+    async def save(self, job_id: str, draft: dict) -> None: ...
+
+    async def get(self, job_id: str) -> dict | None: ...
+
+
+class JobEventStore(Protocol):
+    """Ordered, replayable log of a job's progress events (for SSE reconnect)."""
+
+    async def append(self, job_id: str, event: JobEvent) -> bool:
+        """Persist the event; False when (job_id, seq) already exists (two
+        emitters racing — the caller must retry on a later seq)."""
+        ...
+
+    async def list_since(self, job_id: str, after_seq: int) -> list[JobEvent]: ...
+
+    async def last_seq(self, job_id: str) -> int: ...

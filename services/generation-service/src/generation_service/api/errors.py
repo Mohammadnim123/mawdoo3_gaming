@@ -19,6 +19,7 @@ from generation_service.domain.errors import (
     FeatureDisabledError,
     InvalidPromptError,
     NotFoundError,
+    SourceValidationError,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,14 +28,18 @@ _HTTP_422 = 422  # UNPROCESSABLE_CONTENT; named constant differs across starlett
 
 _STATUS_BY_ERROR: list[tuple[type[DomainError], int]] = [
     (NotFoundError, status.HTTP_404_NOT_FOUND),
+    (SourceValidationError, _HTTP_422),
     (InvalidPromptError, _HTTP_422),
     (ConflictError, status.HTTP_409_CONFLICT),
     (FeatureDisabledError, status.HTTP_403_FORBIDDEN),
 ]
 
 
-def _envelope(code: str, message: str) -> dict:
-    return {"error": {"code": code, "message": message}}
+def _envelope(code: str, message: str, details: dict | None = None) -> dict:
+    envelope: dict = {"error": {"code": code, "message": message}}
+    if details:
+        envelope["error"]["details"] = details
+    return envelope
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -45,7 +50,10 @@ def register_error_handlers(app: FastAPI) -> None:
         )
         if http_status >= 500:
             logger.error("unhandled domain error on %s: %s", request.url.path, exc.message)
-        return JSONResponse(status_code=http_status, content=_envelope(exc.code, exc.message))
+        return JSONResponse(
+            status_code=http_status,
+            content=_envelope(exc.code, exc.message, getattr(exc, "details", None)),
+        )
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

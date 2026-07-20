@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+/u/{handle} — the profile island (reference app/u/[handle]/page.tsx). The
+handle is the only server prop; the screen self-fetches the profile, games
+and (on your own handle) the liked/saved/history library tabs. Known
+handles are public + indexable with seo.profile metadata; unknown/banned
+handles still render (the screen shows its own EmptyState) but go noindex
+with the bare-@handle title — reference parity.
+{% endcomment %}
+{% block title %}{% if profile_user %}{% if profile_user.display_name %}{{ profile_user.display_name }}{% else %}@{{ profile_user.handle }}{% endif %}{% else %}@{{ handle }}{% endif %} · {{ site_name }}{% endblock %}
+{% block description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
+{% block og_title %}{% if profile_user %}{{ profile_user.display_name|default:profile_user.handle }}{% else %}{{ t.meta_default_title }}{% endif %}{% endblock %}
+{% block og_description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
+{% block og_type %}profile{% endblock %}
+{% block twitter_title %}{% if profile_user %}{{ profile_user.display_name|default:profile_user.handle }}{% else %}{{ t.meta_default_title }}{% endif %}{% endblock %}
+{% block twitter_description %}{% if profile_user %}{{ profile_meta_description }}{% else %}{{ t.meta_description }}{% endif %}{% endblock %}
+{% block head %}
+{% if not profile_user %}<meta name="robots" content="noindex, nofollow">{% endif %}
+{% if profile_user %}
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "ProfilePage", "mainEntity": {"@type": "Person", "name": "{{ profile_user.display_name|default:profile_user.handle|escapejs }}", "alternateName": "@{{ profile_user.handle|escapejs }}", "url": "{{ site_origin }}/u/{{ profile_user.handle|escapejs }}"{% if profile_user.bio %}, "description": "{{ profile_user.bio|escapejs }}"{% endif %}{% if profile_user.avatar_url %}, "image": "{{ profile_user.avatar_url|escapejs }}"{% endif %}}}</script>
+{% endif %}
+{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<script id="profile-island-props" type="application/json">{"handle": "{{ handle|escapejs }}"}</script>
+<div id="profile-island">
+  {# Server skeleton mirroring ProfileScreen's isPending state. #}
+  <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8" aria-hidden="true">
+    <div class="flex items-center gap-4">
+      <div class="fp-pulse size-24 rounded-full bg-surface-2"></div>
+      <div class="flex flex-col gap-2">
+        <div class="fp-pulse h-6 w-48 rounded-2xl bg-surface-2"></div>
+        <div class="fp-pulse h-4 w-32 rounded-2xl bg-surface-2"></div>
+      </div>
+    </div>
+    <div class="fp-game-grid">
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/profile.js' %}"></script>
+{% endblock %}

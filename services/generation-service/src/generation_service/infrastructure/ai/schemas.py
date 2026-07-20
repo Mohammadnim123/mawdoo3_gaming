@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from generation_service.domain.blueprint import Genre
+from generation_service.domain.entities import ClarifyOption, ClarifyQuestion
 
 
 class ReviewIssue(BaseModel):
@@ -42,6 +43,19 @@ class ReviewVerdict(BaseModel):
         return data
 
 
+class RawClarifyingQuestion(BaseModel):
+    """One clarifying question exactly as the understanding model emits it."""
+
+    question: str = Field(description="The question, in the same language as the prompt")
+    options: list[str] = Field(
+        description="2-4 short one-tap answer options, same language as the prompt"
+    )
+    default_option_index: int = Field(
+        default=0,
+        description="Index into options of the best 'surprise me' default",
+    )
+
+
 class PromptAnalysis(BaseModel):
     """Output of the prompt-understanding stage (AI call #0)."""
 
@@ -67,3 +81,34 @@ class PromptAnalysis(BaseModel):
         default=Genre.OTHER,
         description="Closest genre; 'other' when out of scope",
     )
+    clarifying_questions: list[RawClarifyingQuestion] = Field(
+        default_factory=list,
+        description="0-3 one-tap clarifying questions, ONLY when the prompt is genuinely "
+        "ambiguous about something that changes the game (theme, difficulty, mechanic). "
+        "Each has 2-4 short options and a smart default. Empty when the prompt is clear.",
+    )
+
+    def domain_questions(self) -> list[ClarifyQuestion]:
+        """Project the LLM's raw questions onto the domain shape (stable ids,
+        option ids derived from position so answers survive label edits)."""
+        questions: list[ClarifyQuestion] = []
+        for q_index, raw in enumerate(self.clarifying_questions[:3]):
+            options = [
+                ClarifyOption(id=f"opt_{o_index + 1}", label=label.strip())
+                for o_index, label in enumerate(raw.options[:4])
+                if label.strip()
+            ]
+            if len(options) < 2:
+                continue
+            default_index = raw.default_option_index
+            if not 0 <= default_index < len(options):
+                default_index = 0
+            questions.append(
+                ClarifyQuestion(
+                    id=f"q_{q_index + 1}",
+                    question=raw.question.strip(),
+                    options=options,
+                    default_option_id=options[default_index].id,
+                )
+            )
+        return questions

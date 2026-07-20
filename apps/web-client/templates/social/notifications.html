@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ t.nav_notifications }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<div id="notifications-island">
+  {# Server skeleton mirroring NotificationsScreen's pending state (5 rows). #}
+  <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-5 sm:py-8" aria-hidden="true">
+    <div class="fp-pulse h-9 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="flex flex-col gap-2">
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse h-16 w-full rounded-2xl bg-surface-2"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/notifications.js' %}"></script>
+{% endblock %}

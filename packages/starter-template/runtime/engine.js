@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  var ENGINE_VERSION = '1.0.0';
+  var ENGINE_VERSION = '1.1.0';
 
   // --------------------------------------------------------------------- //
   // Manifest & locale
@@ -173,8 +173,9 @@
 
     function frame(now) {
       if (!running) return;
-      if (document.hidden) {
-        // Pause instead of accumulating a giant dt while backgrounded.
+      if (document.hidden || bridgePaused) {
+        // Pause instead of accumulating a giant dt while backgrounded or
+        // while the host has bridge-paused us (overlay scrolled away, etc.).
         last = null;
         rafId = window.requestAnimationFrame(frame);
         return;
@@ -278,6 +279,115 @@
   }
 
   // --------------------------------------------------------------------- //
+  // Host bridge v1 — the envelope the player UI consumes:
+  //   {v: 1, type: ready|console|score|error|capture:result, payload}
+  // Inbound control: pause / resume / capture. Legacy `report()` messages
+  // keep flowing for older consumers; both describe the same lifecycle.
+  // --------------------------------------------------------------------- //
+
+  var bridgePaused = false;
+
+  function postBridge(type, payload) {
+    if (window.parent === window) return;
+    try {
+      window.parent.postMessage({ v: 1, type: type, payload: payload || {} }, '*');
+    } catch (err) {
+      /* best-effort */
+    }
+  }
+
+  function stringifyConsoleArg(arg) {
+    if (typeof arg === 'string') return arg;
+    if (arg instanceof Error) return arg.message + (arg.stack ? '\n' + arg.stack : '');
+    try {
+      var json = JSON.stringify(arg);
+      return json === undefined ? String(arg) : json;
+    } catch (err) {
+      return String(arg);
+    }
+  }
+
+  function forwardConsole(level, args, stack) {
+    var parts = [];
+    for (var i = 0; i < args.length; i++) parts.push(stringifyConsoleArg(args[i]));
+    var message = parts.join(' ');
+    if (message.length > 4000) message = message.slice(0, 4000) + '…';
+    var payload = { level: level, message: message, ts: Date.now() };
+    if (stack) payload.stack = stack;
+    postBridge('console', payload);
+  }
+
+  (function shimConsole() {
+    var levels = ['log', 'info', 'warn', 'error'];
+    for (var i = 0; i < levels.length; i++) {
+      (function (level) {
+        var original = console[level] ? console[level].bind(console) : null;
+        console[level] = function () {
+          if (original) original.apply(null, arguments);
+          forwardConsole(level, arguments);
+        };
+      })(levels[i]);
+    }
+    window.addEventListener('error', function (event) {
+      var stack = event.error && event.error.stack ? String(event.error.stack) : undefined;
+      forwardConsole('error', [event.message || 'Uncaught error'], stack);
+      postBridge('error', {
+        message: String(event.message || 'Uncaught error'),
+        stack: stack,
+      });
+    });
+    window.addEventListener('unhandledrejection', function (event) {
+      var reason = event.reason;
+      var message = reason && reason.message ? reason.message : String(reason);
+      var stack = reason && reason.stack ? String(reason.stack) : undefined;
+      forwardConsole('error', ['Unhandled rejection: ' + message], stack);
+      postBridge('error', { message: message, stack: stack });
+    });
+  })();
+
+  function primaryCanvas() {
+    var canvases = document.getElementsByTagName('canvas');
+    var best = null;
+    var bestArea = 0;
+    for (var i = 0; i < canvases.length; i++) {
+      var area = canvases[i].width * canvases[i].height;
+      if (area > bestArea) {
+        best = canvases[i];
+        bestArea = area;
+      }
+    }
+    return best;
+  }
+
+  function handleCapture() {
+    var canvas = primaryCanvas();
+    if (!canvas) {
+      postBridge('capture:result', { dataUrl: null, error: 'no-canvas' });
+      return;
+    }
+    try {
+      postBridge('capture:result', { dataUrl: canvas.toDataURL('image/png') });
+    } catch (err) {
+      postBridge('capture:result', { dataUrl: null, error: 'read-failed' });
+    }
+  }
+
+  window.addEventListener('message', function (event) {
+    if (event.source !== window.parent) return;
+    var data = event.data;
+    if (!data || data.v !== 1 || typeof data.type !== 'string') return;
+    if (data.type === 'pause') {
+      bridgePaused = true;
+      if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
+    } else if (data.type === 'resume') {
+      bridgePaused = false;
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    } else if (data.type === 'capture') {
+      handleCapture();
+    }
+  });
+
+  // --------------------------------------------------------------------- //
   // Overlays
   // --------------------------------------------------------------------- //
 
@@ -314,6 +424,10 @@
     );
     overlay.setAttribute('role', 'alert');
     report('game_error', { message: err && err.message ? err.message : String(err) });
+    postBridge('error', {
+      message: err && err.message ? err.message : String(err),
+      stack: err && err.stack ? String(err.stack) : undefined,
+    });
   }
 
   // --------------------------------------------------------------------- //
@@ -334,6 +448,7 @@
       readyCalled = true;
       hideLoading();
       report('game_ready');
+      postBridge('ready', {});
     },
     loop: loop,
     after: after,
@@ -357,6 +472,9 @@
         score: typeof result.score === 'number' ? result.score : null,
         won: typeof result.won === 'boolean' ? result.won : null,
       });
+      if (typeof result.score === 'number' && isFinite(result.score)) {
+        postBridge('score', { score: result.score });
+      }
     },
   });
 

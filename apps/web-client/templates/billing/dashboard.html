@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+/dashboard — the creator-dashboard island (reference app/dashboard/page.tsx):
+overview stats, per-game analytics, payouts. The view keeps its
+@login_required gate. Private surface → noindex (reference seo.noindex).
+{% endcomment %}
+{% block title %}{{ t.nav_dashboard }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<div id="dashboard-island">
+  {# Server skeleton mirroring DashboardScreen's mePending state. #}
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-8" aria-hidden="true">
+    <div class="fp-pulse h-10 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-48 w-full rounded-2xl bg-surface-2"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/dashboard.js' %}"></script>
+{% endblock %}

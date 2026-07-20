@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load game_extras static %}
+{% block title %}{{ game|loc_title:locale }} · {{ site_name }}{% endblock %}
+{% block description %}{{ game|seo_game_description:locale }}{% endblock %}
+{% block og_title %}{{ game|loc_title:locale }}{% endblock %}
+{% block og_description %}{{ game|seo_game_description:locale }}{% endblock %}
+{% block og_image %}{% if game.cover_url %}<meta property="og:image" content="{{ game.cover_url }}">{% endif %}{% endblock %}
+{% block twitter_card %}{% if game.cover_url %}summary_large_image{% else %}summary{% endif %}{% endblock %}
+{% block twitter_title %}{{ game|loc_title:locale }}{% endblock %}
+{% block twitter_description %}{{ game|seo_game_description:locale }}{% endblock %}
+{% block head %}
+  {% if game.cover_url %}<meta name="twitter:image" content="{{ game.cover_url }}">{% endif %}
+  {# Reference noindex rule: only version-less drafts (unlisted games ARE indexed). #}
+  {% if not game.is_live %}<meta name="robots" content="noindex, nofollow">{% endif %}
+  {% comment %}
+  E34 — the real VideoGame entity with live engagement counters (mirrors
+  the reference videoGameSchema; escapejs keeps user strings JSON-safe;
+  description is OMITTED when the creator wrote none — never the prompt).
+  {% endcomment %}
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"VideoGame",
+   "name":"{{ game|loc_title:locale|escapejs }}",
+   "url":"{{ site_origin }}/g/{{ game.slug }}",
+   {% if game.cover_url %}"image":"{{ game.cover_url|escapejs }}",{% endif %}
+   {% with summary=game|loc_summary:locale %}{% if summary %}"description":"{{ summary|escapejs }}",{% endif %}{% endwith %}
+   {% if game.genre %}"genre":"{{ game.genre|escapejs }}",{% endif %}
+   "gamePlatform":"Web browser",
+   "playMode":"SinglePlayer",
+   "applicationCategory":"Game",
+   "operatingSystem":"Any",
+   "isAccessibleForFree":true,
+   "datePublished":"{{ game.created_at|date:"c" }}",
+   "author":{"@type":"Person","name":"{% if game.owner.display_name %}{{ game.owner.display_name|escapejs }}{% else %}@{{ game.owner.handle|escapejs }}{% endif %}","url":"{{ site_origin }}/u/{{ game.owner.handle }}"},
+   "publisher":{"@id":"{{ site_origin }}/#organization"},
+   "interactionStatistic":[
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/PlayAction","userInteractionCount":{{ game.play_count }}},
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/LikeAction","userInteractionCount":{{ game.like_count }}},
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/CommentAction","userInteractionCount":{{ game.comment_count }}},
+     {"@type":"InteractionCounter","interactionType":"https://schema.org/ShareAction","userInteractionCount":{{ game.share_count }}}
+   ]}
+  </script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+    {"@type":"ListItem","position":1,"name":"{{ site_name|escapejs }}","item":"{{ site_origin }}/"},
+    {"@type":"ListItem","position":2,"name":"{{ game|loc_title:locale|escapejs }}","item":"{{ site_origin }}/g/{{ game.slug }}"}
+  ]}
+  </script>
+{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+{% comment %}
+The island fetches the game contract by slug and renders the ported
+GameScreen; until then the server ships the same pending layout.
+{% endcomment %}
+<div id="game-island">
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-3 sm:gap-5 sm:py-6 md:py-10">
+    <div class="fp-pulse aspect-[16/10] max-h-[70dvh] w-full rounded-2xl bg-surface-2" aria-hidden="true"></div>
+    <div class="fp-pulse h-8 w-2/3 rounded-2xl bg-surface-2" aria-hidden="true"></div>
+    <div class="fp-pulse h-5 w-48 rounded-2xl bg-surface-2" aria-hidden="true"></div>
+    <noscript>
+      {% if game_src %}
+        <div class="overflow-hidden rounded-2xl border border-edge bg-surface-2">
+          <div class="relative w-full" style="aspect-ratio:16/10">
+            <iframe title="{{ game|loc_title:locale }}" class="absolute inset-0 h-full w-full"
+                    src="{{ game_src }}" sandbox="allow-scripts"
+                    referrerpolicy="no-referrer" allow="fullscreen; pointer-lock"></iframe>
+          </div>
+        </div>
+      {% endif %}
+      <h1 class="fp-title-page mt-4 break-words font-bold">{{ game|loc_title:locale }}</h1>
+      <p class="mt-1 text-sm text-ink-secondary">
+        <a href="/u/{{ game.owner.handle }}" class="hover:text-ink">{{ t.by }} {% if game.owner.display_name %}{{ game.owner.display_name }}{% else %}@{{ game.owner.handle }}{% endif %}</a>
+      </p>
+      {% if game|loc_summary:locale %}<p class="mt-3 text-sm text-ink-secondary">{{ game|loc_summary:locale }}</p>{% endif %}
+    </noscript>
+    {# Deep-link anchor before hydration; GameScreen re-renders it. #}
+    <div id="comments"></div>
+  </div>
+</div>
+<script id="game-island-props" type="application/json">{"slug": "{{ game.slug|escapejs }}"}</script>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/game.js' %}"></script>
+{% endblock %}

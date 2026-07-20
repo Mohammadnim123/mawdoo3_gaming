@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+/me — the account island (reference app/me/page.tsx). AccountScreen reads
+?tab= client-side; the view keeps its @login_required gate. Reference tab
+title: t.meta.myAccount ("My account") — served from the legacy catalog's
+closest key. Private surface → noindex (reference metadata).
+{% endcomment %}
+{% block title %}{{ t.acct_title }} · {{ site_name }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<div id="account-island">
+  {# Server skeleton mirroring AccountScreen's isPending state. #}
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-8" aria-hidden="true">
+    <div class="fp-pulse h-10 w-56 rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-40 w-full rounded-2xl bg-surface-2"></div>
+    <div class="fp-pulse h-40 w-full rounded-2xl bg-surface-2"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/account.js' %}"></script>
+{% endblock %}

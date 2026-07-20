@@ -37,6 +37,15 @@ class BackgroundJobRunner:
             # close it so it doesn't warn.
             coro.close()
 
+    def cancel(self, name: str) -> bool:
+        """Cancel the tracked task with this name (a creator-initiated stop).
+        Returns True when a matching live task was found."""
+        for task in self._tasks:
+            if task.get_name() == name and not task.done():
+                task.cancel()
+                return True
+        return False
+
     def _on_done(self, task: asyncio.Task) -> None:
         self._tasks.discard(task)
         if task.cancelled():

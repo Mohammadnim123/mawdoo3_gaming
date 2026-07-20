@@ -1,0 +1,43 @@
+{% load static %}<!doctype html>
+{# Bare full-screen shell for island-owned app surfaces (the studio         #}
+{# workspace). Same <head> as base.html — CSS, theme pre-paint, fonts — but #}
+{# NO topbar/footer/mobile-tabbar: the island renders its own chrome        #}
+{# (reference AppChrome.tsx hides global chrome on /studio routes and locks #}
+{# document scroll; the inline height/overflow styles replicate that lock). #}
+<html lang="{{ locale }}" dir="{{ dir }}" data-theme="dark" style="height:100%;overflow:hidden">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0a0a0f">
+
+  {# Pre-paint theme so there is no flash: stored choice, else auto (day/night). #}
+  <script>
+    (function () {
+      try {
+        var p = localStorage.getItem("fp-theme");
+        if (p !== "light" && p !== "dark") {
+          var h = (new Date()).getHours();
+          p = (h >= 7 && h < 19) ? "light" : "dark";
+        }
+        var d = document.documentElement;
+        d.dataset.theme = p;
+        d.style.colorScheme = p;
+      } catch (e) {}
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Tajawal:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="{% static 'games/dist/app.css' %}">
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-canvas text-ink font-sans antialiased"
+      style="height:100%;overflow:hidden;overscroll-behavior:none">
+  {% block content %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

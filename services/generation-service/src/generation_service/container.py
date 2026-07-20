@@ -6,13 +6,22 @@ explicit, and nothing else in the codebase instantiates infrastructure.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
+from generation_service.api.schemas import bundle_file_url
+from generation_service.application.events import JobEventBus
 from generation_service.application.job_runner import BackgroundJobRunner
 from generation_service.application.use_cases import (
+    AnswerQuestionsUseCase,
+    CancelGenerationUseCase,
+    EditSourceUseCase,
     GetGameUseCase,
     GetGenerationUseCase,
+    GetVersionSourceUseCase,
     ListGamesUseCase,
+    ListVersionsUseCase,
+    RollbackUseCase,
     RunGenerationUseCase,
     StartGenerationUseCase,
     StartTweakUseCase,
@@ -22,15 +31,19 @@ from generation_service.domain.entities import FailureCode
 from generation_service.infrastructure.ai.llm import StructuredLlm, create_client
 from generation_service.infrastructure.ai.nodes import GenerationNodes
 from generation_service.infrastructure.ai.pipeline import GenerationPipeline
+from generation_service.infrastructure.art import GeminiArtClient
 from generation_service.infrastructure.packaging.assembler import (
     StarterTemplate,
     TemplateAssembler,
 )
 from generation_service.infrastructure.persistence import (
     Database,
-    SqliteGameRepository,
-    SqliteJobRepository,
-    SqliteLlmCallLog,
+    PostgresGameRepository,
+    PostgresGameVersionRepository,
+    PostgresJobDraftStore,
+    PostgresJobEventStore,
+    PostgresJobRepository,
+    PostgresLlmCallLog,
 )
 from generation_service.infrastructure.storage import LocalFolderStorage
 from generation_service.infrastructure.validation.gate import QualityGate
@@ -46,11 +59,20 @@ class Container:
         s = self.settings
 
         # Persistence
-        self.database = Database(s.database.sqlite_path)
+        self.database = Database(
+            s.database.dsn,
+            min_size=s.database.pool_min_size,
+            max_size=s.database.pool_max_size,
+        )
         await self.database.connect()
-        self.games = SqliteGameRepository(self.database)
-        self.jobs = SqliteJobRepository(self.database)
-        self.llm_log = SqliteLlmCallLog(self.database)
+        self.games = PostgresGameRepository(self.database)
+        self.jobs = PostgresJobRepository(self.database)
+        self.versions = PostgresGameVersionRepository(self.database)
+        self.llm_log = PostgresLlmCallLog(self.database)
+        self.job_events = PostgresJobEventStore(self.database)
+        self.job_drafts = PostgresJobDraftStore(self.database)
+        # In-process pub/sub for live SSE (API + workers share this process).
+        self.job_event_bus = JobEventBus()
 
         # Jobs run in-process, so anything still queued/running in the DB was
         # lost with the previous process — fail it now instead of letting
@@ -61,6 +83,13 @@ class Container:
         )
         if abandoned:
             logger.warning("failed %d job(s) abandoned by a previous process", abandoned)
+        expired = await self.jobs.expire_stale_awaiting(
+            FailureCode.EXPIRED,
+            "the clarifying questions went unanswered — please submit again",
+            max_age_hours=s.pipeline.clarify_answer_ttl_hours,
+        )
+        if expired:
+            logger.info("expired %d job(s) stuck awaiting answers", expired)
 
         # Storage (local mirrors the future bucket layout; s3 is the config swap)
         if s.storage.storage_backend != "local":
@@ -93,6 +122,22 @@ class Container:
                 max_output_tokens=s.ai.llm_max_output_tokens,
             )
 
+        # Image generation — optional quality lever powering two features
+        # (painted backdrop + feed-card poster); silently absent without a key
+        # so local setups keep working with zero config.
+        art = None
+        art_wanted = s.features.feature_background_art or s.features.feature_cover_poster
+        if art_wanted and s.art.gemini_api_key:
+            art = GeminiArtClient(
+                s.art.gemini_api_key,
+                model=s.art.gemini_image_model,
+                cover_model=s.art.gemini_cover_model,
+                base_url=s.art.gemini_base_url,
+                timeout_seconds=s.art.art_timeout_seconds,
+            )
+        else:
+            logger.info("image generation disabled (both art flags off or no GEMINI_API_KEY)")
+
         nodes = GenerationNodes(
             understanding_llm=structured(s.ai.understanding_model),
             blueprint_llm=structured(s.ai.blueprint_model),
@@ -101,25 +146,39 @@ class Container:
             assembler=self.assembler,
             storage=self.storage,
             llm_log=self.llm_log,
+            art=art,
+            background_enabled=s.features.feature_background_art,
+            cover_enabled=s.features.feature_cover_poster,
         )
         self.pipeline = GenerationPipeline(
             nodes,
             max_code_retries=s.pipeline.generation_max_code_retries,
             deep_review_enabled=s.features.feature_llm_review,
+            clarify_enabled=s.features.feature_clarify,
         )
 
         # Application
         self.job_runner = BackgroundJobRunner(
             max_concurrent=s.pipeline.generation_max_concurrent
         )
+        # One lock serializes every terminal job transition (success persist,
+        # failure mark, creator cancel) across the in-process runner.
+        self.terminal_lock = asyncio.Lock()
         self.run_generation = RunGenerationUseCase(
             pipeline=self.pipeline,
             jobs=self.jobs,
             games=self.games,
+            versions=self.versions,
             template_version=template.version,
             blueprint_model=s.ai.blueprint_model,
             code_model=s.ai.code_model,
             timeout_seconds=s.pipeline.generation_timeout_seconds,
+            event_store=self.job_events,
+            event_bus=self.job_event_bus,
+            terminal_lock=self.terminal_lock,
+            drafts=self.job_drafts,
+            storage=self.storage,
+            bundle_url=lambda prefix, rel: bundle_file_url(prefix, rel, s),
         )
         self.start_generation = StartGenerationUseCase(
             jobs=self.jobs, runner=self.job_runner, run_generation=self.run_generation
@@ -131,9 +190,32 @@ class Container:
             run_generation=self.run_generation,
             enabled=s.features.feature_tweaks_api,
         )
+        self.answer_questions = AnswerQuestionsUseCase(
+            jobs=self.jobs, runner=self.job_runner, run_generation=self.run_generation
+        )
+        self.cancel_generation = CancelGenerationUseCase(
+            jobs=self.jobs,
+            runner=self.job_runner,
+            event_store=self.job_events,
+            event_bus=self.job_event_bus,
+            terminal_lock=self.terminal_lock,
+        )
         self.get_generation = GetGenerationUseCase(self.jobs)
         self.list_games = ListGamesUseCase(self.games)
         self.get_game = GetGameUseCase(self.games)
+        self.list_versions = ListVersionsUseCase(self.games, self.versions)
+        self.get_version_source = GetVersionSourceUseCase(
+            self.games, self.versions, self.storage
+        )
+        self.rollback = RollbackUseCase(self.games, self.versions, self.jobs)
+        self.edit_source = EditSourceUseCase(
+            games=self.games,
+            versions=self.versions,
+            jobs=self.jobs,
+            gate=self.gate,
+            assembler=self.assembler,
+            storage=self.storage,
+        )
 
         logger.info(
             "container ready — template v%s, provider=%s, storage=%s",

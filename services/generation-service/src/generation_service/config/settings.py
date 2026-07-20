@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -88,6 +89,22 @@ class AISettings(_Base):
     llm_max_output_tokens: int = 32000
 
 
+class ArtSettings(_Base):
+    """Background painting — Gemini native image generation ("Nano Banana").
+    Optional by design: with no key (or the feature flag off) the pipeline
+    skips painting and games keep the procedural layered backdrop."""
+
+    gemini_api_key: str = ""
+    gemini_image_model: str = "gemini-2.5-flash-image"
+    # Feed-card posters. Lettering the title into the art is the hard part;
+    # gemini-3-pro-image ("Nano Banana Pro") renders it best — bump this when
+    # the key has access. Defaults to the backdrop model so it works out of
+    # the box with any Gemini image key.
+    gemini_cover_model: str = "gemini-2.5-flash-image"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com"
+    art_timeout_seconds: float = 90.0
+
+
 class StorageSettings(_Base):
     # 'local' mirrors the object-store key layout on disk; 's3' is the
     # future config swap (same StoragePort, same keys).
@@ -104,7 +121,32 @@ class StorageSettings(_Base):
 
 
 class DatabaseSettings(_Base):
-    sqlite_path: Path = _SERVICE_ROOT / "var" / "generation.db"
+    """Postgres connection for the metadata store (game bodies live in
+    StoragePort). Mirrors the web-client's POSTGRES_* convention; a full
+    DATABASE_URL wins over the discrete parts when both are set."""
+
+    database_url: str = ""
+    postgres_db: str = "generation_service"
+    postgres_user: str = "gen_service"
+    postgres_password: str = ""
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    # asyncpg pool bounds. min=1 keeps startup cheap (grows on demand);
+    # max caps concurrent DB connections well above the pipeline concurrency.
+    pool_min_size: int = 1
+    pool_max_size: int = 10
+
+    @property
+    def dsn(self) -> str:
+        if self.database_url:
+            return self.database_url
+        user = quote(self.postgres_user, safe="")
+        auth = user
+        if self.postgres_password:
+            auth = f"{user}:{quote(self.postgres_password, safe='')}"
+        return (
+            f"postgresql://{auth}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
 
 class PipelineSettings(_Base):
@@ -115,6 +157,9 @@ class PipelineSettings(_Base):
     generation_timeout_seconds: float = 900.0
     # Concurrent pipeline runs; submissions beyond the cap wait in QUEUED.
     generation_max_concurrent: int = 4
+    # AWAITING_INPUT jobs older than this are expired at startup — paused jobs
+    # survive restarts, so something must eventually reap the abandoned ones.
+    clarify_answer_ttl_hours: float = 48.0
     gate_node_syntax_check: bool = True
     gate_syntax_check_timeout_seconds: float = 20.0
     gate_smoke_boot: bool = True
@@ -124,7 +169,10 @@ class PipelineSettings(_Base):
 
 class FeatureFlags(_Base):
     feature_llm_review: bool = True  # deep logic review in the gate (kill switch)
+    feature_background_art: bool = True  # painted bg.png backdrop (needs GEMINI_API_KEY)
+    feature_cover_poster: bool = True  # painted feed-card poster (needs GEMINI_API_KEY)
     feature_tweaks_api: bool = True  # chat-edit an existing game (kill switch)
+    feature_clarify: bool = True  # pause on clarifying questions for ambiguous prompts
     feature_share_links: bool = False
 
 
@@ -146,6 +194,7 @@ class Settings:
         self.app = AppSettings()
         self.logging = LoggingSettings()
         self.ai = AISettings()
+        self.art = ArtSettings()
         self.storage = StorageSettings()
         self.database = DatabaseSettings()
         self.pipeline = PipelineSettings()

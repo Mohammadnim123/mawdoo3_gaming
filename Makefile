@@ -1,10 +1,14 @@
-.PHONY: setup setup-service setup-web dev-service dev-web dev-cdn test test-service test-web lint demo consistency
+.PHONY: setup setup-service setup-web provision-service-db dev-service dev-web dev-cdn build-web migrate-web test test-service test-web lint demo consistency
 
 SERVICE_DIR := services/generation-service
 WEB_DIR     := apps/web-client
 WEB_PORT    ?= 8001
 # Base URL of the generation service (tracks APP_PORT / a remote deployment).
 SERVICE_URL ?= http://localhost:8000
+# Superuser used to provision the service's Postgres role + database.
+PG_SUPERUSER ?= postgres
+PG_HOST      ?= localhost
+PG_PORT      ?= 5432
 
 setup: setup-service setup-web
 
@@ -19,8 +23,25 @@ setup-web:
 	python3 -m venv $(WEB_DIR)/.venv
 	$(WEB_DIR)/.venv/bin/pip install --upgrade pip
 	$(WEB_DIR)/.venv/bin/pip install -e "$(WEB_DIR)[dev]"
+	$(WEB_DIR)/.venv/bin/pip install "psycopg[binary]"
 	@test -f $(WEB_DIR)/.env || cp $(WEB_DIR)/.env.example $(WEB_DIR)/.env
+	npm --prefix $(WEB_DIR)/frontend install
+	$(MAKE) build-web
+	$(MAKE) migrate-web
 	@echo ">> edit $(WEB_DIR)/.env and set OPENROUTER_API_KEY (prompt validation)"
+
+# Compile the Codply design-system CSS + React islands -> games/static/games/dist/
+build-web:
+	npm --prefix $(WEB_DIR)/frontend run build
+
+# One-time: create the gen_service role + generation_service database.
+# Runs as a superuser (prompts for that password); edit the password in
+# scripts/provision_db.sql to match POSTGRES_PASSWORD in the service .env.
+provision-service-db:
+	psql -h $(PG_HOST) -p $(PG_PORT) -U $(PG_SUPERUSER) -f $(SERVICE_DIR)/scripts/provision_db.sql
+
+migrate-web:
+	cd $(WEB_DIR) && .venv/bin/python manage.py migrate
 
 dev-service:
 	cd $(SERVICE_DIR) && .venv/bin/python -m generation_service
@@ -38,11 +59,11 @@ test-service:
 	cd $(SERVICE_DIR) && .venv/bin/python -m pytest -q
 
 test-web:
-	cd $(WEB_DIR) && .venv/bin/python manage.py test games -v 1
+	cd $(WEB_DIR) && .venv/bin/python manage.py test accounts api core games social billing -v 1
 
 lint:
 	cd $(SERVICE_DIR) && .venv/bin/python -m ruff check src tests
-	cd $(WEB_DIR) && .venv/bin/python -m ruff check webclient games
+	cd $(WEB_DIR) && .venv/bin/python -m ruff check accounts api core games social billing webclient
 
 # Kick off a generation from the terminal, e.g.:
 #   make demo PROMPT="Make a Flappy Bird clone"

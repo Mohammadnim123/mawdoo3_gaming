@@ -28,7 +28,7 @@ src/generation_service/
 │   ├── validation/   # the blocking quality gate
 │   ├── packaging/    # starter-template assembler (self-contained bundles)
 │   ├── storage/      # StoragePort adapters (local folder now, S3 later)
-│   └── persistence/  # SQLite repositories (games, jobs, flat llm_calls log)
+│   └── persistence/  # Postgres repositories (games, jobs, flat llm_calls log)
 ├── api/              # FastAPI routes, DTOs, error mapping
 ├── container.py      # composition root — all wiring lives here
 └── main.py           # app factory

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+/search — the search island (reference app/search/page.tsx). SearchScreen
+seeds from ?q=, debounces typing into the URL and self-fetches results from
+GET /api/v1/games?q=. Query pages stay out of the index (reference
+seo.page noindex). The <noscript> grid keeps the server-rendered results
+usable without JS (the view still computes them).
+{% endcomment %}
+{% block title %}{{ t.nav_search }} · {{ site_name }}{% endblock %}
+{% block description %}{{ t.search_hint_description }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block main_class %}w-full{% endblock %}
+{% block content %}
+<div id="search-island">
+  {% comment %}
+  Server skeleton mirroring SearchScreen: title + input shell, then the
+  loading grid when a query is present (its empty/prompt states are JS).
+  {% endcomment %}
+  <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:py-8" aria-hidden="true">
+    <div class="flex flex-col gap-3">
+      <div class="fp-pulse h-9 w-40 rounded-2xl bg-surface-2"></div>
+      <div class="max-w-xl">
+        <div class="fp-pulse h-11 w-full rounded-2xl bg-surface-2"></div>
+      </div>
+    </div>
+    {% if q %}
+    <div class="fp-game-grid">
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+      <div class="fp-pulse aspect-[16/12] w-full rounded-2xl bg-surface-2"></div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<noscript>
+  <div class="mx-auto w-full max-w-6xl px-4 py-6">
+    <form action="/search" method="get" class="mb-6">
+      <input type="search" name="q" value="{{ q }}"
+             class="fp-input" placeholder="{{ t.search_placeholder }}" aria-label="{{ t.nav_search }}">
+    </form>
+    {% with items=games %}{% include "partials/_game_grid.html" %}{% endwith %}
+  </div>
+</noscript>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{% static 'games/dist/islands/search.js' %}"></script>
+{% endblock %}

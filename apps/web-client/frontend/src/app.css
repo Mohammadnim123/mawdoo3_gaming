@@ -1,0 +1,232 @@
+/*
+ * Django web-client CSS entry — compiled by Tailwind v4 to
+ * games/static/games/dist/app.css and loaded by base.html.
+ *
+ *   @import "tailwindcss"   → the engine + utilities
+ *   @import "./codply-ui"   → the ported Codply design system (tokens, .fp-* classes)
+ *
+ * Tailwind scans the @source globs below for the utility classes actually used
+ * in Django templates and React island source, so only those are emitted.
+ */
+@import "tailwindcss";
+@import "./codply-ui.css";
+
+/* Where the utility classes live (paths are relative to this file). */
+@source "../../templates/**/*.html";
+@source "../../games/templates/**/*.html";
+@source "../src/**/*.{ts,tsx,js,jsx}";
+
+/*
+ * Webfont family names the token vars reference. The actual @font-face / <link>
+ * loading is done in base.html; these just wire the family names to the tokens.
+ */
+:root {
+  --font-space-grotesk: "Space Grotesk";
+  --font-inter: "Inter";
+  --font-jetbrains-mono: "JetBrains Mono";
+  /* The brand wordmark keeps its Latin type in EVERY locale — never remapped
+   * to Tajawal (reference layout.tsx `--font-brand`). <Logo/> reads this. */
+  --font-brand: "Space Grotesk", Inter, system-ui, sans-serif;
+}
+
+/* Arabic remaps Tajawal onto both sans + display (brand wordmark stays Latin). */
+html[lang="ar"] {
+  --font-inter: "Tajawal";
+  --font-space-grotesk: "Tajawal";
+}
+
+/*
+ * The page NEVER scrolls horizontally — wide content (code, console, tables)
+ * must own its scrolling. `clip` (not `hidden`) so no stray scroll container
+ * is created. (Reference globals.css.)
+ */
+body {
+  overflow-x: clip;
+}
+
+/*
+ * Height of the fixed bottom tab bar (+ home indicator) below md. Consumed by
+ * @codply/ui overlays (Toast) and any component that must clear the bar.
+ */
+:root {
+  --fp-bottom-nav: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  :root {
+    --fp-bottom-nav: 0px;
+  }
+}
+
+/*
+ * Server-rendered component classes — the Codply primitives (Button, Card,
+ * Chip, Input) as CSS so Django templates stay clean and consistent with the
+ * React islands, which use the real @codply/ui components.
+ */
+@layer components {
+  /* Mirrors the @codply/ui Button: font-medium, fixed heights per size
+   * (sm h-8 / md h-10 / lg h-12), select-none + the fp-hit touch target. */
+  .fp-btn {
+    @apply inline-flex h-10 select-none items-center justify-center gap-2 rounded-2xl px-4 text-sm font-medium transition-colors;
+    position: relative; /* fp-hit anchor for the ≥44px coarse-pointer target */
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  @media (pointer: coarse) {
+    .fp-btn::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+  .fp-btn-sm {
+    @apply h-8 px-3 text-sm;
+  }
+  .fp-btn-lg {
+    @apply h-12 px-6 text-base;
+  }
+  .fp-btn-cta {
+    background-image: var(--gradient-cta);
+    color: var(--color-ink-on-accent);
+  }
+  .fp-btn-cta:hover {
+    opacity: 0.9;
+  }
+  .fp-btn-cta:active {
+    opacity: 0.8;
+  }
+  .fp-btn-solid {
+    background-color: var(--color-ink);
+    color: var(--color-canvas);
+  }
+  .fp-btn-soft {
+    background-color: var(--color-surface-2);
+    color: var(--color-ink-secondary);
+    border-color: var(--color-edge);
+  }
+  .fp-btn-soft:hover {
+    background-color: var(--color-surface-3);
+    color: var(--color-ink);
+  }
+  .fp-btn-ghost {
+    background-color: transparent;
+    color: var(--color-ink-secondary);
+  }
+  .fp-btn-ghost:hover {
+    color: var(--color-ink);
+    background-color: var(--color-surface-2);
+  }
+  .fp-btn-danger {
+    background-color: var(--color-danger);
+    color: #fff;
+  }
+
+  /* Mirrors the @codply/ui Card: border-edge, no clipping (callers own their
+   * padding — templates add p-*; media clips itself with rounded corners). */
+  .fp-card {
+    @apply rounded-2xl;
+    background-color: var(--color-surface-1);
+    border: 1px solid var(--color-edge);
+  }
+
+  /*
+   * The one game-card grid (reference globals.css): 2-up from 340px (1-up
+   * only below), 3-up ≥md, 4-up ≥xl. Cards are built to work from 160px wide.
+   */
+  .fp-game-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  @media (max-width: 339px) {
+    .fp-game-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (min-width: 768px) {
+    .fp-game-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    .fp-game-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .fp-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs;
+    background-color: var(--color-surface-2);
+    color: var(--color-ink-secondary);
+    border: 1px solid var(--color-edge);
+  }
+
+  .fp-input {
+    @apply w-full rounded-2xl px-4 py-3;
+    background-color: var(--color-surface-2);
+    color: var(--color-ink);
+    border: 1px solid var(--color-edge);
+    font-size: 16px; /* iOS focus-zoom guard */
+  }
+  .fp-input::placeholder {
+    color: var(--color-ink-muted);
+  }
+  .fp-input:focus {
+    outline: none;
+    border-color: var(--color-violet);
+  }
+
+  /* Brand wordmark. */
+  .fp-wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .fp-gradient-text {
+    background-image: var(--gradient-cta);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+/* ---- Landing hero (ported from codply apps/web globals.css) ------------- */
+.fp-hero-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right,
+      color-mix(in srgb, var(--color-violet) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom,
+      color-mix(in srgb, var(--color-cyan) 7%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 15%, transparent 78%);
+  animation: fp-grid-pan 16s linear infinite;
+}
+@keyframes fp-grid-pan {
+  from { background-position: 0 0; }
+  to   { background-position: 0 44px; }
+}
+
+/* Animated gradient headline (the "Play it." highlight). */
+.fp-headline-gradient {
+  background-image: linear-gradient(90deg,
+    var(--color-violet) 0%, var(--color-cyan) 40%, var(--color-violet) 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: fp-gradient-slide 7s linear infinite;
+}
+@keyframes fp-gradient-slide {
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-hero-grid, .fp-headline-gradient { animation: none; }
+}

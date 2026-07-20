@@ -1,0 +1,98 @@
+{# Site top bar — SSR twin of the reference components/nav/TopBar.tsx.        #}
+{# The interactive halves live in stable slots the chrome island hydrates:    #}
+{#   #chrome-search  → HeaderSearch combobox (SSR: identical-looking form)    #}
+{#   #chrome-actions → NotificationBell + AccountMenu / logged-out actions    #}
+{# Slot markup mirrors the React first render class-for-class (the island's   #}
+{# query cache is seeded from chrome_props) so hydration is invisible.        #}
+<header class="sticky top-0 z-40 border-b border-edge-subtle bg-canvas/90 backdrop-blur">
+  <div class="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3 px-4">
+    <a href="/" class="rounded-2xl" aria-label="{{ t.nav_codply_home }}">
+      {# <Logo className="text-lg" /> — Gamepad2 glyph + gradient wordmark. #}
+      <span dir="ltr" class="inline-flex items-center gap-2 font-[family-name:var(--font-brand)] font-bold leading-none text-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-[1.15em] text-violet" aria-hidden="true"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></svg>
+        <span class="bg-clip-text font-display text-transparent" style="background-image:var(--gradient-cta)">Codply</span>
+      </span>
+    </a>
+
+    {# HeaderSearch slot — SSR renders the same combobox shell as a working GET form. #}
+    <div id="chrome-search" class="contents">
+      <div class="flex flex-1 items-center justify-end sm:justify-center">
+        <form action="/search" method="get" class="hidden w-full max-w-md sm:block">
+          <div class="relative">
+            <div class="flex w-full flex-col gap-1.5">
+              <div class="relative">
+                <span class="pointer-events-none absolute inset-y-0 start-3 flex items-center text-ink-muted">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                </span>
+                <input type="text" name="q" aria-label="{{ t.search_placeholder }}" placeholder="{{ t.search_placeholder }}"
+                       autocomplete="off" enterkeyhint="search" spellcheck="false"
+                       role="combobox" aria-expanded="false" aria-controls="header-search-menu"
+                       aria-autocomplete="list" data-testid="header-search-input"
+                       class="h-11 w-full rounded-2xl border bg-surface-2 px-3 text-base text-ink placeholder:text-ink-muted transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-50 ps-10 border-edge hover:border-edge-strong">
+              </div>
+            </div>
+          </div>
+        </form>
+        {# <sm: the compact icon (React opens the search sheet; SSR links to /search). #}
+        <a href="/search" aria-label="{{ t.nav_search }}" data-testid="header-search-trigger"
+           class="fp-hit inline-flex items-center justify-center transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-50 border border-transparent bg-transparent text-ink-secondary hover:bg-surface-2 hover:text-ink size-10 rounded-2xl sm:hidden">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <nav class="flex items-center gap-2" aria-label="{{ t.nav_primary }}">
+      <a href="/studio" class="hidden md:block">
+        {# Button variant="gradient-cta" size="sm" leftIcon=Sparkles #}
+        <span class="fp-hit inline-flex select-none items-center justify-center gap-2 rounded-2xl font-medium transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-50 border-0 bg-[image:var(--gradient-cta)] text-ink-on-accent hover:opacity-90 active:opacity-80 h-8 px-3 text-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+          {{ t.nav_create }}
+        </span>
+      </a>
+
+      <div id="chrome-actions" class="contents">
+        {% if user.is_authenticated %}
+          {# <NotificationBell /> #}
+          <a href="/notifications" aria-label="{{ nav_bell_aria }}"
+             class="relative flex size-9 items-center justify-center rounded-full text-ink-secondary transition-colors duration-150 ease-out hover:bg-surface-1 hover:text-ink">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+            {% if nav_unread %}<span aria-hidden="true" class="absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-ink-on-accent">{{ nav_unread_badge }}</span>{% endif %}
+          </a>
+          {# <AccountMenu /> trigger — the dropdown itself is React-only. #}
+          <div class="relative">
+            <button type="button" aria-expanded="false" aria-haspopup="menu" aria-label="{{ t.nav_account_menu }}" class="flex items-center rounded-full">
+              {% if nav_avatar.src %}
+                <img src="{{ nav_avatar.src }}" alt="{{ nav_avatar.name }}"
+                     class="rounded-full border border-edge object-cover size-6 text-[10px]">
+              {% else %}
+                <span role="img" aria-label="{{ nav_avatar.name }}"
+                      style="background-color:{{ nav_avatar.bg }};color:{{ nav_avatar.hue }};border-color:{{ nav_avatar.border }}"
+                      class="inline-flex items-center justify-center rounded-full border font-medium size-6 text-[10px]">{{ nav_avatar.initials }}</span>
+              {% endif %}
+            </button>
+          </div>
+        {% else %}
+          <span class="flex items-center gap-1.5">
+            {% comment %}
+            LanguageToggle pill (SSR: ?lang= round-trip preserving the query
+            — a lang param already present is overridden, last one wins;
+            React swaps in place).
+            {% endcomment %}
+            <a href="?{% if request.GET %}{{ request.GET.urlencode }}&{% endif %}lang={{ other_locale }}" aria-label="{{ t.nav_language }}" data-testid="language-toggle"
+               class="fp-hit flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm text-ink-secondary transition-colors duration-150 ease-out hover:bg-surface-1 hover:text-ink">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+              {{ t.other_lang }}
+            </a>
+            <a href="/login">
+              {# Button variant="soft" size="sm" leftIcon=LogIn #}
+              <span class="fp-hit inline-flex select-none items-center justify-center gap-2 rounded-2xl font-medium transition-colors duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet disabled:pointer-events-none disabled:opacity-50 border border-edge bg-surface-2 text-ink-secondary hover:bg-surface-3 hover:text-ink h-8 px-3 text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>
+                {{ t.nav_login }}
+              </span>
+            </a>
+          </span>
+        {% endif %}
+      </div>
+    </nav>
+  </div>
+</header>

@@ -1,0 +1,41 @@
+{# Mobile bottom tab bar — SSR twin of the reference MobileTabBar.tsx.       #}
+{# Home / Create-FAB / Alerts / Me; active state (nav_tab) computed server-   #}
+{# side from request.path with the reference matchers. Hidden on md+.         #}
+<nav aria-label="{{ t.nav_mobile }}"
+     class="fixed inset-x-0 bottom-0 z-40 border-t border-edge-subtle bg-canvas/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur md:hidden">
+  <ul class="grid h-16 grid-cols-4">
+    <li class="min-w-0">
+      <a href="/" {% if nav_tab == "home" %}aria-current="page" {% endif %}class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium {% if nav_tab == "home" %}text-ink{% else %}text-ink-muted{% endif %} transition-colors duration-150 ease-out">
+        <span class="relative" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </span>
+        {{ t.nav_home }}
+      </a>
+    </li>
+    <li class="min-w-0">
+      <a href="/studio" {% if nav_tab == "create" %}aria-current="page" {% endif %}class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium {% if nav_tab == "create" %}text-ink{% else %}text-ink-muted{% endif %} transition-colors duration-150 ease-out">
+        <span class="-mt-5 flex size-11 items-center justify-center rounded-full text-ink-on-accent border border-edge bg-[image:var(--gradient-cta)]{% if nav_tab == "create" %} border-violet{% endif %}" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+        </span>
+        {{ t.nav_create }}
+      </a>
+    </li>
+    <li class="min-w-0">
+      <a href="/notifications" {% if nav_tab == "alerts" %}aria-current="page" {% endif %}class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium {% if nav_tab == "alerts" %}text-ink{% else %}text-ink-muted{% endif %} transition-colors duration-150 ease-out">
+        <span class="relative" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+          {% if nav_unread %}<span class="absolute -end-1.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-danger px-0.5 text-[9px] font-bold text-ink-on-accent">{{ nav_unread_badge }}</span>{% endif %}
+        </span>
+        {{ t.nav_alerts }}
+      </a>
+    </li>
+    <li class="min-w-0">
+      <a href="/me" {% if nav_tab == "me" %}aria-current="page" {% endif %}class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium {% if nav_tab == "me" %}text-ink{% else %}text-ink-muted{% endif %} transition-colors duration-150 ease-out">
+        <span class="relative" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+        </span>
+        {{ t.nav_me }}
+      </a>
+    </li>
+  </ul>
+</nav>
