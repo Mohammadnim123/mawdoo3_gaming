@@ -53,7 +53,7 @@ export function TopBar(): ReactElement {
         <HeaderSearch />
 
         <nav className="flex items-center gap-2" aria-label={t.nav.primary}>
-          <Link href="/studio" className="hidden md:block">
+          <Link href="/create" className="hidden md:block">
             <Button variant="gradient-cta" size="sm" leftIcon={<Sparkles className="size-4" aria-hidden />}>
               {t.nav.create}
             </Button>
