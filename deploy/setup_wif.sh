@@ -59,6 +59,9 @@ main() {
         --attribute-condition=\"assertion.repository=='${GITHUB_REPO}'\""
 
   # Only workflows from THIS repo may impersonate the deployer SA.
+  # Brief pause: a freshly-created SA's IAM resource can lag, and setIamPolicy
+  # then fails with PERMISSION_DENIED ("may not exist") until it propagates.
+  sleep 10
   log "allowing repo ${GITHUB_REPO} to impersonate ${DEPLOYER_SA}"
   gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER_SA_EMAIL" \
     --role="roles/iam.workloadIdentityUser" \
