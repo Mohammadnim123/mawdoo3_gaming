@@ -1,0 +1,37 @@
+# Keep image build contexts lean and reproducible. Both service Dockerfiles
+# build from the repo root, so this applies to every COPY.
+
+# Python virtualenvs & caches
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+# Node deps (reinstalled via `npm ci` in the builder stage)
+**/node_modules/
+
+# Regenerable / runtime artifacts
+services/generation-service/var/
+apps/web-client/var/
+apps/web-client/staticfiles/
+apps/web-client/games/static/games/dist/
+
+# Reference-only project (never shipped) and local-only docs
+codply/
+.archive/
+docs/local/
+
+# Secrets & local env — provided at runtime via Cloud Run env vars
+**/.env
+**/.env.*
+!**/.env.example
+
+# VCS / editor / CI noise
+.git/
+.github/
+.vscode/
+**/.DS_Store

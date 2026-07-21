@@ -91,12 +91,21 @@ class Container:
         if expired:
             logger.info("expired %d job(s) stuck awaiting answers", expired)
 
-        # Storage (local mirrors the future bucket layout; s3 is the config swap)
-        if s.storage.storage_backend != "local":
+        # Storage: local mirrors the bucket layout on disk (dev); gcs is the
+        # production object store (Cloud Storage, served via Cloud CDN). Both
+        # honour the same StoragePort + key layout, so this is a config swap.
+        if s.storage.storage_backend == "gcs":
+            # Imported lazily so local/dev runs never require the GCS client lib.
+            from generation_service.infrastructure.storage.gcs import GcsStorage
+
+            self.storage = GcsStorage(s.storage.object_storage_bucket)
+        elif s.storage.storage_backend == "local":
+            self.storage = LocalFolderStorage(s.storage.storage_local_dir)
+        else:
             raise NotImplementedError(
-                "object-storage backend is a post-MVP config swap; set STORAGE_BACKEND=local"
+                f"unsupported STORAGE_BACKEND={s.storage.storage_backend!r}; "
+                "use 'local' (disk) or 'gcs' (Cloud Storage)"
             )
-        self.storage = LocalFolderStorage(s.storage.storage_local_dir)
 
         # Template + packaging + gate (fail fast if the template is broken)
         template = StarterTemplate.load(s.pipeline.template_dir)

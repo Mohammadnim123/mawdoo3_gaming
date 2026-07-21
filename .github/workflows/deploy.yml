@@ -1,0 +1,65 @@
+name: Deploy to Cloud Run
+
+# Rolls out new images to the EXISTING Cloud Run services (env vars, Cloud SQL
+# attachment, service accounts and scaling are set once by deploy/deploy.sh and
+# preserved here — an image-only rollout keeps them). Run provision.sh +
+# deploy.sh + setup_wif.sh once before relying on this workflow.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # never interrupt an in-flight rollout
+
+permissions:
+  contents: read
+  id-token: write             # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      AR_REPO: mawdoo3-gaming
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to GCP (keyless / WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build & push images (Cloud Build)
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_SHA::7}"
+          AR_HOST="${REGION}-docker.pkg.dev"
+          gcloud builds submit . --config cloudbuild.yaml \
+            --substitutions="_AR_HOST=${AR_HOST},_REPO_PATH=${PROJECT_ID}/${AR_REPO},_TAG=${TAG}"
+          {
+            echo "TAG=${TAG}"
+            echo "GEN_IMG=${AR_HOST}/${PROJECT_ID}/${AR_REPO}/generation-service:${TAG}"
+            echo "WEB_IMG=${AR_HOST}/${PROJECT_ID}/${AR_REPO}/web-client:${TAG}"
+          } >> "$GITHUB_ENV"
+
+      - name: Roll out generation-service
+        run: gcloud run deploy generation-service --image "${GEN_IMG}" --region "${REGION}" --quiet
+
+      - name: Apply Django migrations
+        run: |
+          set -euo pipefail
+          gcloud run jobs update web-migrate --image "${WEB_IMG}" --region "${REGION}" --quiet
+          gcloud run jobs execute web-migrate --region "${REGION}" --wait
+
+      - name: Roll out web-client
+        run: gcloud run deploy web-client --image "${WEB_IMG}" --region "${REGION}" --quiet

@@ -15,6 +15,7 @@ dependencies = [
     "anthropic>=0.40",
     "asyncpg>=0.29",
     "pillow>=10.0",
+    "google-cloud-storage>=2.18",
 ]
 
 [project.optional-dependencies]

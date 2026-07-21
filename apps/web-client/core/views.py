@@ -10,6 +10,15 @@ from games.services.generation_api import GenerationApiError, get_client
 
 
 @require_GET
+def healthz(request):
+    """Liveness/readiness probe for Cloud Run. Deliberately dependency-free:
+    returns 200 as soon as the WSGI app is importable and serving, without
+    touching the database or the generation engine (use /status for a deep
+    check). Cloud Run marks the revision ready on the first 200 here."""
+    return HttpResponse("ok", content_type="text/plain")
+
+
+@require_GET
 def robots(request):
     # Mirrors the reference app/robots.ts: public content is open to ALL
     # crawlers (incl. AI/answer-engine bots); app/private surfaces are

@@ -106,9 +106,10 @@ class ArtSettings(_Base):
 
 
 class StorageSettings(_Base):
-    # 'local' mirrors the object-store key layout on disk; 's3' is the
-    # future config swap (same StoragePort, same keys).
-    storage_backend: Literal["local", "s3"] = "local"
+    # 'local' mirrors the object-store key layout on disk; 'gcs' is the
+    # production Cloud Storage backend (same StoragePort, same keys). 's3' is
+    # reserved for a future S3-compatible adapter.
+    storage_backend: Literal["local", "gcs", "s3"] = "local"
     storage_local_dir: Path = _SERVICE_ROOT / "var" / "storage"
 
     object_storage_bucket: str = ""

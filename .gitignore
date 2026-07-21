@@ -31,3 +31,6 @@ codply
 
 # Local-only docs (not part of the shipped repo)
 docs/local/
+
+# Deployment: generated secrets/state (DB passwords, tokens, env files)
+deploy/.secrets/

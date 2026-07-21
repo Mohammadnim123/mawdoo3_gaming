@@ -64,6 +64,14 @@ CSRF_TRUSTED_ORIGINS = [
     if o.strip()
 ]
 
+# Behind Cloud Run (and any TLS-terminating proxy), the app speaks plain HTTP to
+# the container while the client connection is HTTPS. Trust the forwarded proto
+# so request.is_secure() is correct — otherwise secure cookies, CSRF origin
+# checks and absolute URL building all misbehave. Cloud Run always sets
+# X-Forwarded-Proto. USE_X_FORWARDED_HOST lets Django honour the external host.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
 # --------------------------------------------------------------------------
 # Applications
 # --------------------------------------------------------------------------
@@ -85,6 +93,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Serves collected static files (Django admin + built React islands) straight
+    # from the container with compression + caching headers — no separate static
+    # server needed on Cloud Run. Must sit directly after SecurityMiddleware.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -183,10 +195,18 @@ THEME_COOKIE_NAME = "fp_theme"
 # --------------------------------------------------------------------------
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# WhiteNoise CompressedStaticFilesStorage: gzip/brotli precompression, but it
+# does NOT hash-rename files. That is deliberate — the Vite-built islands import
+# their own chunks by literal filename, and a manifest storage's renaming would
+# break those relative JS imports (manifest only rewrites {% static %} tags and
+# CSS url()s, not JS import strings).
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }
+# WhiteNoise: keep serving files it didn't see at collectstatic time (defensive)
+# and allow the built islands' hashed asset chunks a long cache life.
+WHITENOISE_MAX_AGE = 3600
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "var" / "media"

@@ -1,0 +1,44 @@
+# Cloud Build: build + push both service images from the repo-root context.
+# Driven by deploy/build.sh and the GitHub Actions deploy workflow.
+#   substitutions: _AR_HOST, _REPO_PATH (PROJECT/REPO), _TAG
+substitutions:
+  _AR_HOST: europe-west1-docker.pkg.dev
+  _REPO_PATH: qalam-plus-app/mawdoo3-gaming
+  _TAG: latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY   # no logs bucket required
+  machineType: E2_HIGHCPU_8     # faster npm/vite + pip builds
+
+images:
+  - '${_AR_HOST}/${_REPO_PATH}/generation-service:${_TAG}'
+  - '${_AR_HOST}/${_REPO_PATH}/generation-service:latest'
+  - '${_AR_HOST}/${_REPO_PATH}/web-client:${_TAG}'
+  - '${_AR_HOST}/${_REPO_PATH}/web-client:latest'
+
+steps:
+  - id: build-generation-service
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']              # start immediately (parallel with build-web)
+    args:
+      - build
+      - -f
+      - services/generation-service/Dockerfile
+      - -t
+      - '${_AR_HOST}/${_REPO_PATH}/generation-service:${_TAG}'
+      - -t
+      - '${_AR_HOST}/${_REPO_PATH}/generation-service:latest'
+      - .
+
+  - id: build-web-client
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']              # start immediately (parallel with build-gen)
+    args:
+      - build
+      - -f
+      - apps/web-client/Dockerfile
+      - -t
+      - '${_AR_HOST}/${_REPO_PATH}/web-client:${_TAG}'
+      - -t
+      - '${_AR_HOST}/${_REPO_PATH}/web-client:latest'
+      - .

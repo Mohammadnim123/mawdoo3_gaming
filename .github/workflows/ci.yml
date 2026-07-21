@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generation-service:
+    name: generation-service · lint + test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: services/generation-service
+    env:
+      # The suite creates/drops throwaway DBs per test, so it needs a CREATEDB
+      # role — the postgres superuser in the service container.
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: generation_service
+      OPENROUTER_API_KEY: ci-dummy-key
+      STORAGE_BACKEND: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4   # quality gate runs `node --check` + smoke boot
+        with:
+          node-version: "20"
+      - run: pip install -e ".[dev]"
+      - name: Ruff
+        run: python -m ruff check src tests
+      - name: Pytest
+        run: python -m pytest -q
+
+  web-client:
+    name: web-client · lint + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web-client
+    env:
+      DJANGO_SECRET_KEY: ci-dummy-key
+      DJANGO_DEBUG: "true"   # tests run on the SQLite default; no Postgres needed
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Ruff
+        run: python -m ruff check accounts api core games social billing webclient
+      - name: Django tests
+        run: python manage.py test accounts api core games social billing -v 1
