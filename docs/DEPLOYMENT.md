@@ -108,7 +108,7 @@ image-only rollout). No manual steps.
 ## 5. Operations
 
 - **Logs**: Cloud Logging (`LOG_FORMAT=json` on the engine). `gcloud run services logs read <svc> --region europe-west1`.
-- **Health**: engine `GET /health`; web `GET /healthz` (dependency-free); web `GET /status` (deep — checks the engine).
+- **Health**: engine `GET /health`; web `GET /health` (dependency-free; **not** `/healthz` — Google Front End reserves that path on `*.run.app`); web `GET /status` (deep — checks the engine).
 - **Autoscaling**: web-client `min=1 max=4`; generation-service pinned to `1` (see §2).
 - **Backups**: Cloud SQL automated daily backups at 03:00 UTC (`--backup`). Enable PITR/HA for prod.
 - **Scaling knobs / sizing**: all in [`deploy/config.sh`](../deploy/config.sh) — override via env and re-run `deploy.sh`.

@@ -10,11 +10,12 @@ from games.services.generation_api import GenerationApiError, get_client
 
 
 @require_GET
-def healthz(request):
+def health(request):
     """Liveness/readiness probe for Cloud Run. Deliberately dependency-free:
     returns 200 as soon as the WSGI app is importable and serving, without
     touching the database or the generation engine (use /status for a deep
-    check). Cloud Run marks the revision ready on the first 200 here."""
+    check). NB: served at /health, not /healthz — Google Front End reserves the
+    literal path /healthz on *.run.app and 404s it before it reaches the app."""
     return HttpResponse("ok", content_type="text/plain")
 
 

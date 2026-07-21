@@ -57,7 +57,9 @@ state_set() {
 state_get_or_create() {
   local key="$1" gen="$2" existing
   state_init
-  existing="$(grep "^${key}=" "$STATE_FILE" 2>/dev/null | head -1 | cut -d= -f2-)"
+  # `|| true`: a no-match grep returns non-zero which, under `set -o pipefail`,
+  # would trip `set -e` when this runs as a direct (non-substituted) call.
+  existing="$(grep "^${key}=" "$STATE_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   if [[ -n "$existing" ]]; then printf '%s' "$existing"; return; fi
   local val; val="$(eval "$gen")"
   state_set "$key" "$val"
@@ -74,5 +76,5 @@ gen_secret() { openssl rand -hex 32; }   # 64 hex chars — >Django's 50-char fl
 dotenv_get() {
   local file="$1" key="$2"
   [[ -f "$file" ]] || { printf ''; return; }
-  grep -E "^${key}=" "$file" | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'
+  grep -E "^${key}=" "$file" | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' || true
 }
